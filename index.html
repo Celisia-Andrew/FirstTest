@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Habit Tracker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 16px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+            color: #1a1a1a;
+        }
+
+        /* --- Add Habit Form --- */
+        .add-form {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 32px;
+        }
+
+        .add-form input {
+            flex: 1;
+            padding: 12px 16px;
+            font-size: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .add-form input:focus {
+            border-color: #4a90d9;
+        }
+
+        .add-form button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: 600;
+            background-color: #4a90d9;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .add-form button:hover {
+            background-color: #357abd;
+        }
+
+        /* --- Habit List --- */
+        .habit-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .habit-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 16px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+            transition: opacity 0.2s;
+        }
+
+        .habit-item.completed {
+            opacity: 0.55;
+        }
+
+        .habit-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: #4a90d9;
+        }
+
+        .habit-item .habit-name {
+            flex: 1;
+            font-size: 1rem;
+            transition: text-decoration 0.2s, color 0.2s;
+        }
+
+        .habit-item.completed .habit-name {
+            text-decoration: line-through;
+            color: #999;
+        }
+
+        .habit-item .delete-btn {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            color: #ccc;
+            cursor: pointer;
+            padding: 0 4px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .habit-item .delete-btn:hover {
+            color: #e55;
+        }
+
+        /* --- Empty State --- */
+        .empty-message {
+            text-align: center;
+            color: #aaa;
+            font-size: 0.95rem;
+            padding: 40px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>My Habit Tracker</h1>
+
+        <div class="add-form">
+            <input
+                type="text"
+                id="habit-input"
+                placeholder="Start small: e.g., 'Do 1 push-up'"
+                autocomplete="off"
+            />
+            <button id="add-btn">Add</button>
+        </div>
+
+        <ul class="habit-list" id="habit-list"></ul>
+    </div>
+
+    <script>
+        // --- Data ---
+        let habits = [];
+        let nextId = 1;
+
+        // --- localStorage ---
+        function saveHabits() {
+            localStorage.setItem("habits", JSON.stringify(habits));
+            localStorage.setItem("nextId", String(nextId));
+        }
+
+        function loadHabits() {
+            const stored = localStorage.getItem("habits");
+            if (stored) {
+                habits = JSON.parse(stored);
+            }
+            const storedId = localStorage.getItem("nextId");
+            if (storedId) {
+                nextId = Number(storedId);
+            }
+        }
+
+        // --- Rendering ---
+        function renderHabits() {
+            const list = document.getElementById("habit-list");
+
+            if (habits.length === 0) {
+                list.innerHTML = '<li class="empty-message">No habits yet. Add one above!</li>';
+                return;
+            }
+
+            list.innerHTML = habits
+                .map(function (habit) {
+                    return (
+                        '<li class="habit-item' + (habit.completed ? " completed" : "") + '">' +
+                            '<input type="checkbox"' +
+                                (habit.completed ? " checked" : "") +
+                                ' onchange="toggleHabit(' + habit.id + ')" />' +
+                            '<span class="habit-name">' + escapeHtml(habit.name) + "</span>" +
+                            '<button class="delete-btn" onclick="deleteHabit(' + habit.id + ')" title="Delete">&times;</button>' +
+                        "</li>"
+                    );
+                })
+                .join("");
+        }
+
+        // --- Actions ---
+        function addHabit() {
+            const input = document.getElementById("habit-input");
+            const name = input.value.trim();
+            if (!name) return;
+
+            habits.push({ id: nextId, name: name, completed: false });
+            nextId++;
+            input.value = "";
+            saveHabits();
+            renderHabits();
+            input.focus();
+        }
+
+        function toggleHabit(id) {
+            const habit = habits.find(function (h) { return h.id === id; });
+            if (habit) {
+                habit.completed = !habit.completed;
+                saveHabits();
+                renderHabits();
+            }
+        }
+
+        function deleteHabit(id) {
+            habits = habits.filter(function (h) { return h.id !== id; });
+            saveHabits();
+            renderHabits();
+        }
+
+        // --- Utility ---
+        function escapeHtml(text) {
+            var div = document.createElement("div");
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // --- Initialization ---
+        loadHabits();
+        renderHabits();
+
+        document.getElementById("add-btn").addEventListener("click", addHabit);
+
+        document.getElementById("habit-input").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") addHabit();
+        });
+    </script>
+</body>
+</html>
