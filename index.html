@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Survivor 50 Draft</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      background: #12080000;
+      background-color: #1a0a00;
+      color: #f4e4c1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #7a1500 0%, #bf3d00 60%, #e05000 100%);
+      padding: 18px 24px;
+      text-align: center;
+      border-bottom: 3px solid #ff7700;
+      box-shadow: 0 4px 24px rgba(255,102,0,.45);
+    }
+    header h1 {
+      font-size: 2.2rem;
+      color: #ffd700;
+      text-shadow: 2px 2px 8px rgba(0,0,0,.8);
+      letter-spacing: 4px;
+      text-transform: uppercase;
+    }
+    header p {
+      margin-top: 4px;
+      font-size: .9rem;
+      color: #f4e4c1;
+      opacity: .85;
+      letter-spacing: 1px;
+    }
+
+    /* ── Turn indicator ── */
+    #turn-indicator {
+      padding: 14px 20px;
+      text-align: center;
+      font-size: 1.3rem;
+      font-weight: bold;
+      border-bottom: 2px solid #5a3000;
+      letter-spacing: 1px;
+      transition: background .4s, color .4s;
+    }
+    #turn-indicator.celisia-turn {
+      background: rgba(255,105,180,.1);
+      color: #ffaae8;
+      border-color: #ff69b4;
+    }
+    #turn-indicator.andrew-turn {
+      background: rgba(9,132,227,.1);
+      color: #7ec8ff;
+      border-color: #0984e3;
+    }
+    #turn-indicator.complete {
+      background: rgba(255,215,0,.08);
+      color: #ffd700;
+      border-color: #ffd700;
+    }
+
+    /* ── Three-column layout ── */
+    .main-layout {
+      display: grid;
+      grid-template-columns: 210px 1fr 210px;
+      flex: 1;
+    }
+
+    /* ── Team panels ── */
+    .team-panel {
+      padding: 18px 12px;
+      border-right: 2px solid #3a1e00;
+      background: #160800;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .team-panel.andrew-panel {
+      border-right: none;
+      border-left: 2px solid #3a1e00;
+    }
+    .team-panel h2 {
+      text-align: center;
+      font-size: 1.05rem;
+      padding: 8px 6px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .celisia-panel h2 {
+      background: rgba(255,105,180,.18);
+      color: #ffaae8;
+      border: 1px solid rgba(255,105,180,.4);
+    }
+    .andrew-panel h2 {
+      background: rgba(9,132,227,.18);
+      color: #7ec8ff;
+      border: 1px solid rgba(9,132,227,.4);
+    }
+    .team-count {
+      text-align: center;
+      font-size: .85rem;
+      color: #9a7a55;
+    }
+    .team-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      overflow-y: auto;
+    }
+    .team-list-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 8px;
+      border-radius: 7px;
+      font-size: .78rem;
+      line-height: 1.25;
+      animation: slideIn .25s ease;
+    }
+    .celisia-panel .team-list-item {
+      background: rgba(255,105,180,.13);
+      border: 1px solid rgba(255,105,180,.25);
+    }
+    .andrew-panel .team-list-item {
+      background: rgba(9,132,227,.13);
+      border: 1px solid rgba(9,132,227,.25);
+    }
+    .team-list-item img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .pick-num {
+      margin-left: auto;
+      font-size: .7rem;
+      color: #7a5535;
+      flex-shrink: 0;
+    }
+
+    /* ── Draft pool ── */
+    .draft-pool {
+      padding: 20px;
+      background: #1a0a00;
+      overflow-y: auto;
+    }
+    .draft-pool > h2 {
+      text-align: center;
+      font-size: .95rem;
+      color: #ffd700;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      margin-bottom: 16px;
+    }
+    .player-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+    }
+
+    /* ── Player card ── */
+    .player-card {
+      background: #251200;
+      border: 2px solid #4a2800;
+      border-radius: 10px;
+      padding: 12px 8px 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform .15s, border-color .15s, box-shadow .15s, opacity .3s, filter .3s;
+      position: relative;
+      user-select: none;
+    }
+    .player-card:hover:not(.drafted) {
+      border-color: #ff7700;
+      background: #331a00;
+      transform: translateY(-3px);
+      box-shadow: 0 6px 18px rgba(255,119,0,.35);
+    }
+    .player-card:active:not(.drafted) {
+      transform: translateY(-1px);
+    }
+    .player-card img {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid #4a2800;
+      display: block;
+      margin: 0 auto 8px;
+      background: #2d1500;
+    }
+    .player-card .player-name {
+      font-size: .72rem;
+      color: #f0ddb0;
+      line-height: 1.3;
+    }
+    .tbd-badge {
+      display: inline-block;
+      margin-top: 3px;
+      font-size: .62rem;
+      background: #4a2800;
+      color: #ffaa55;
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* Drafted: faded + owner badge */
+    .player-card.drafted {
+      opacity: .32;
+      filter: grayscale(70%);
+      cursor: default;
+      pointer-events: none;
+    }
+    .owner-badge {
+      position: absolute;
+      top: 5px;
+      right: 6px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      font-size: .7rem;
+      font-weight: bold;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .badge-celisia { background: #d63fa0; }
+    .badge-andrew  { background: #0878d1; }
+
+    /* ── Controls ── */
+    #controls {
+      text-align: center;
+      padding: 14px 20px;
+      background: #160800;
+      border-top: 2px solid #3a1e00;
+    }
+    #reset-btn {
+      background: linear-gradient(135deg, #7a1500, #bf3d00);
+      color: #ffd700;
+      border: 2px solid #e05000;
+      padding: 10px 32px;
+      font-size: .95rem;
+      font-family: Georgia, serif;
+      border-radius: 24px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background .2s, box-shadow .2s, transform .1s;
+    }
+    #reset-btn:hover {
+      background: linear-gradient(135deg, #bf3d00, #e05000);
+      box-shadow: 0 4px 16px rgba(255,102,0,.5);
+      transform: scale(1.04);
+    }
+    #reset-btn:active { transform: scale(.98); }
+
+    /* ── Animations ── */
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+      .team-panel {
+        border-right: none;
+        border-bottom: 2px solid #3a1e00;
+      }
+      .team-panel.andrew-panel {
+        border-left: none;
+        border-top: 2px solid #3a1e00;
+        border-bottom: none;
+      }
+      .team-list { flex-direction: row; flex-wrap: wrap; }
+      .team-list-item { flex: 0 0 auto; }
+      header h1 { font-size: 1.5rem; }
+      #turn-indicator { font-size: 1.05rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>&#128293; Survivor 50 Draft &#128293;</h1>
+  <p>Celisia &nbsp;&bull;&nbsp; Andrew &nbsp;&mdash;&nbsp; 24 Castaways &nbsp;&bull;&nbsp; 12 Picks Each</p>
+</header>
+
+<div id="turn-indicator"></div>
+
+<div class="main-layout">
+
+  <!-- Celisia -->
+  <aside class="team-panel celisia-panel">
+    <h2>Celisia</h2>
+    <p class="team-count" id="celisia-count">0 / 12</p>
+    <ul class="team-list" id="celisia-team-list"></ul>
+  </aside>
+
+  <!-- Pool -->
+  <main class="draft-pool">
+    <h2>Available Castaways</h2>
+    <div class="player-grid" id="player-grid"></div>
+  </main>
+
+  <!-- Andrew -->
+  <aside class="team-panel andrew-panel">
+    <h2>Andrew</h2>
+    <p class="team-count" id="andrew-count">0 / 12</p>
+    <ul class="team-list" id="andrew-team-list"></ul>
+  </aside>
+
+</div>
+
+<div id="controls">
+  <button id="reset-btn">&#x21BA;&nbsp; Reset Draft</button>
+</div>
+
+<script>
+  // ─── Roster ───────────────────────────────────────────────────────────────
+  const PLAYERS = [
+    { id:  1, name: "Jenna Lewis-Dougherty" },
+    { id:  2, name: "Colby Donaldson" },
+    { id:  3, name: "Stephenie LaGrossa Kendrick" },
+    { id:  4, name: "Cirie Fields" },
+    { id:  5, name: "Ozzy Lusth" },
+    { id:  6, name: 'Benjamin "Coach" Wade' },
+    { id:  7, name: "Aubry Bracco" },
+    { id:  8, name: "Chrissy Hofbeck" },
+    { id:  9, name: "Christian Hubicki" },
+    { id: 10, name: "Angelina Keeley" },
+    { id: 11, name: "Mike White" },
+    { id: 12, name: "Rick Devens" },
+    { id: 13, name: "Jonathan Young" },
+    { id: 14, name: "Dee Valladares" },
+    { id: 15, name: "Emily Flippen" },
+    { id: 16, name: "Q Burdette" },
+    { id: 17, name: "Tiffany Ervin" },
+    { id: 18, name: "Charlie Davis" },
+    { id: 19, name: "Genevieve Mushaluk" },
+    { id: 20, name: "Kyle Fraser" },
+    { id: 21, name: "Joe Hunter" },
+    { id: 22, name: "Kamilla Karthigesu" },
+    { id: 23, name: "Castaway TBD #23", tbd: true },
+    { id: 24, name: "Castaway TBD #24", tbd: true },
+  ];
+
+  const STORAGE_KEY = 'survivor50draft_v1';
+
+  // ─── Avatar helper ────────────────────────────────────────────────────────
+  const BG_COLORS = ['8b2500','b03a00','5a1e00','004455','1a3d00','3d0045','004433'];
+  function avatarUrl(player) {
+    if (player.tbd) {
+      return 'https://ui-avatars.com/api/?name=%3F&size=150&background=4a2800&color=ffaa55&bold=true&rounded=true';
+    }
+    const bg = BG_COLORS[player.id % BG_COLORS.length];
+    // Use first + last initial for cleaner avatar
+    const parts = player.name.replace(/["""]/g, '').split(' ');
+    const initials = (parts[0][0] + (parts[parts.length - 1][0] || '')).toUpperCase();
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=150&background=${bg}&color=ffeedd&bold=true&rounded=true`;
+  }
+
+  // ─── State ────────────────────────────────────────────────────────────────
+  function defaultState() {
+    return {
+      currentTurn: 'celisia',   // 'celisia' | 'andrew'
+      celisiaTeam: [],          // ordered array of player ids
+      andrewTeam:  [],
+      draftComplete: false,
+    };
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const s = JSON.parse(raw);
+        // Basic sanity check
+        if (Array.isArray(s.celisiaTeam) && Array.isArray(s.andrewTeam)) return s;
+      }
+    } catch (_) {}
+    return defaultState();
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  let state = loadState();
+
+  // ─── Draft logic ──────────────────────────────────────────────────────────
+  function draftedSet() {
+    return new Set([...state.celisiaTeam, ...state.andrewTeam]);
+  }
+
+  function pickPlayer(playerId) {
+    if (state.draftComplete) return;
+    if (draftedSet().has(playerId)) return;
+
+    if (state.currentTurn === 'celisia') {
+      state.celisiaTeam.push(playerId);
+    } else {
+      state.andrewTeam.push(playerId);
+    }
+
+    const total = state.celisiaTeam.length + state.andrewTeam.length;
+    if (total === PLAYERS.length || (state.celisiaTeam.length === 12 && state.andrewTeam.length === 12)) {
+      state.draftComplete = true;
+    } else {
+      state.currentTurn = state.currentTurn === 'celisia' ? 'andrew' : 'celisia';
+    }
+
+    saveState();
+    render();
+  }
+
+  function resetDraft() {
+    if (!confirm('Reset the entire draft? All picks will be cleared.')) return;
+    state = defaultState();
+    saveState();
+    render();
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+  function renderTurnIndicator() {
+    const el = document.getElementById('turn-indicator');
+    const pickNum = state.celisiaTeam.length + state.andrewTeam.length + 1;
+
+    if (state.draftComplete) {
+      el.className = 'complete';
+      el.textContent = '\uD83C\uDFC6  Draft Complete! Good luck out there!';
+    } else if (state.currentTurn === 'celisia') {
+      el.className = 'celisia-turn';
+      el.textContent = `\uD83C\uDF38  Celisia\u2019s Turn \u2014 Pick ${pickNum} of 24`;
+    } else {
+      el.className = 'andrew-turn';
+      el.textContent = `\u26A1  Andrew\u2019s Turn \u2014 Pick ${pickNum} of 24`;
+    }
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('player-grid');
+    const drafted = draftedSet();
+    grid.innerHTML = '';
+
+    PLAYERS.forEach(player => {
+      const isDrafted  = drafted.has(player.id);
+      const byCelisia  = state.celisiaTeam.includes(player.id);
+      const byAndrew   = state.andrewTeam.includes(player.id);
+
+      const card = document.createElement('div');
+      card.className = 'player-card' + (isDrafted ? ' drafted' : '');
+
+      // Owner badge
+      let badge = '';
+      if (byCelisia) badge = '<span class="owner-badge badge-celisia">C</span>';
+      if (byAndrew)  badge = '<span class="owner-badge badge-andrew">A</span>';
+
+      card.innerHTML = `
+        ${badge}
+        <img src="${avatarUrl(player)}" alt="${escapeHtml(player.name)}" loading="lazy">
+        <div class="player-name">${escapeHtml(player.name)}${player.tbd ? '<br><span class="tbd-badge">TBD</span>' : ''}</div>
+      `;
+
+      if (!isDrafted && !state.draftComplete) {
+        card.addEventListener('click', () => pickPlayer(player.id));
+      }
+
+      grid.appendChild(card);
+    });
+  }
+
+  function renderTeam(teamIds, listId, countId, pickOffset) {
+    const list    = document.getElementById(listId);
+    const countEl = document.getElementById(countId);
+    list.innerHTML = '';
+    countEl.textContent = `${teamIds.length} / 12`;
+
+    teamIds.forEach((id, idx) => {
+      const player = PLAYERS.find(p => p.id === id);
+      if (!player) return;
+      const li = document.createElement('li');
+      li.className = 'team-list-item';
+      li.innerHTML = `
+        <img src="${avatarUrl(player)}" alt="${escapeHtml(player.name)}">
+        <span>${escapeHtml(player.name)}</span>
+        <span class="pick-num">#${pickOffset + idx + 1}</span>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  function render() {
+    renderTurnIndicator();
+    renderGrid();
+    // Reconstruct per-team pick numbers from the interleaved draft order:
+    // Celisia picks 1,3,5,… → absolute picks 1,3,5,…
+    // Andrew picks 2,4,6,… → absolute picks 2,4,6,…
+    // We just show the player's sequential pick within their own team (1–12)
+    renderTeam(state.celisiaTeam, 'celisia-team-list', 'celisia-count', 0);
+    renderTeam(state.andrewTeam,  'andrew-team-list',  'andrew-count',  0);
+  }
+
+  // ─── Util ─────────────────────────────────────────────────────────────────
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ─── Init ─────────────────────────────────────────────────────────────────
+  document.getElementById('reset-btn').addEventListener('click', resetDraft);
+  render();
+</script>
+</body>
+</html>
