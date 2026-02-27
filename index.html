@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multiplication Fluency System</title>
+  <style>
+    /* ── Reset & Base ──────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:         #f5f7fa;
+      --card:       #ffffff;
+      --primary:    #2563eb;
+      --primary-dk: #1d4ed8;
+      --success:    #16a34a;
+      --danger:     #dc2626;
+      --warn:       #d97706;
+      --text:       #111827;
+      --muted:      #6b7280;
+      --border:     #e5e7eb;
+      --radius:     12px;
+      --shadow:     0 4px 24px rgba(0,0,0,0.08);
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 18px;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────────── */
+    #app {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .screen {
+      width: 100%;
+      max-width: 680px;
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 48px 40px;
+      text-align: center;
+    }
+
+    .hidden { display: none !important; }
+
+    /* ── Typography ─────────────────────────────────────────────────────── */
+    h1 { font-size: 2.8rem; font-weight: 700; margin-bottom: 12px; }
+    h2 { font-size: 2.2rem; font-weight: 700; margin-bottom: 16px; }
+    p  { font-size: 1.2rem; color: var(--muted); margin-bottom: 24px; }
+
+    /* ── Problem Display ────────────────────────────────────────────────── */
+    .problem {
+      font-size: 5rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      margin: 32px 0 16px;
+      line-height: 1.1;
+      color: var(--text);
+    }
+
+    .problem .operator { color: var(--muted); margin: 0 8px; }
+    .problem .equals   { color: var(--muted); margin: 0 8px; }
+    .problem .blank    { color: var(--primary); }
+
+    /* ── Answer Input Display ───────────────────────────────────────────── */
+    .answer-input {
+      display: inline-block;
+      min-width: 120px;
+      font-size: 4rem;
+      font-weight: 700;
+      border-bottom: 4px solid var(--border);
+      padding: 4px 16px;
+      margin: 8px auto 24px;
+      color: var(--primary);
+      letter-spacing: 4px;
+      transition: border-color 0.15s;
+    }
+
+    .answer-input.has-input {
+      border-bottom-color: var(--primary);
+    }
+
+    /* ── Timer ──────────────────────────────────────────────────────────── */
+    .timer {
+      font-size: 3rem;
+      font-weight: 800;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+
+    .timer--warning { color: var(--danger) !important; }
+
+    /* ── Header bar (assessment & practice) ─────────────────────────────── */
+    .header-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .level-tag {
+      background: var(--primary);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 6px 18px;
+      border-radius: 999px;
+      letter-spacing: 1px;
+    }
+
+    .phase-label {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .fact-count {
+      font-size: 1rem;
+      color: var(--muted);
+    }
+
+    /* ── Progress bar ───────────────────────────────────────────────────── */
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      background: var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 999px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    /* ── Fact type badge ────────────────────────────────────────────────── */
+    .fact-type {
+      display: inline-block;
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 4px 14px;
+      border-radius: 999px;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .fact-type--new        { background: #fef3c7; color: #92400e; }
+    .fact-type--review     { background: #dbeafe; color: #1e40af; }
+    .fact-type--correction { background: #fee2e2; color: #991b1b; }
+
+    /* ── Feedback ───────────────────────────────────────────────────────── */
+    .feedback {
+      font-size: 1.3rem;
+      font-weight: 600;
+      padding: 10px 20px;
+      border-radius: 8px;
+      margin: 12px auto;
+      max-width: 400px;
+    }
+
+    .feedback--correct   { background: #dcfce7; color: var(--success); }
+    .feedback--incorrect { background: #fee2e2; color: var(--danger);  }
+    .feedback--info      { background: #dbeafe; color: #1e40af; }
+
+    /* ── Correction prompt ──────────────────────────────────────────────── */
+    .correction-prompt {
+      font-size: 1.2rem;
+      background: #fff7ed;
+      border: 2px solid #fed7aa;
+      border-radius: 10px;
+      padding: 16px 24px;
+      margin: 16px auto;
+      max-width: 440px;
+      color: #7c2d12;
+      line-height: 1.5;
+    }
+
+    .correction-prompt strong { font-size: 1.4rem; }
+
+    /* ── Target progress ────────────────────────────────────────────────── */
+    .target-progress {
+      font-size: 1rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn-primary {
+      display: inline-block;
+      background: var(--primary);
+      color: #fff;
+      font-size: 1.3rem;
+      font-weight: 700;
+      padding: 16px 48px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-top: 16px;
+      letter-spacing: 0.5px;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn-primary:hover  { background: var(--primary-dk); }
+    .btn-primary:active { transform: scale(0.97); }
+
+    /* ── Welcome screen ─────────────────────────────────────────────────── */
+    #screen-welcome .subtitle {
+      font-size: 1.4rem;
+      color: var(--muted);
+      margin-bottom: 40px;
+    }
+
+    .resume-note {
+      font-size: 1rem;
+      color: var(--primary);
+      background: #eff6ff;
+      border-radius: 8px;
+      padding: 10px 20px;
+      margin-bottom: 24px;
+    }
+
+    /* ── Placement / result ─────────────────────────────────────────────── */
+    .placement-dcpm {
+      font-size: 2.5rem;
+      font-weight: 800;
+      color: var(--primary);
+      margin: 16px 0 8px;
+    }
+
+    .placement-msg {
+      font-size: 1.3rem;
+      color: var(--text);
+      margin-bottom: 32px;
+    }
+
+    /* ── Test result ────────────────────────────────────────────────────── */
+    .result-dcpm {
+      font-size: 2rem;
+      font-weight: 700;
+      margin: 12px 0;
+    }
+
+    .result-msg {
+      font-size: 1.2rem;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    /* ── Stats table ────────────────────────────────────────────────────── */
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 1.1rem;
+      margin: 16px 0;
+    }
+
+    .stats-table td {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+
+    .stats-table td:last-child { font-weight: 700; text-align: right; }
+
+    /* ── Admin reset (hidden by default) ────────────────────────────────── */
+    .admin-btn {
+      position: fixed;
+      bottom: 12px;
+      right: 12px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: transparent;
+      cursor: pointer;
+      font-size: 18px;
+      user-select: none;
+    }
+
+    .admin-btn:hover {
+      background: #fee2e2;
+      color: var(--danger);
+    }
+
+    /* ── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .screen    { padding: 32px 20px; }
+      .problem   { font-size: 3.5rem; }
+      .answer-input { font-size: 3rem; }
+      .timer     { font-size: 2.2rem; }
+      h1 { font-size: 2.2rem; }
+      h2 { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       WELCOME SCREEN
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="screen-welcome" class="screen">
+    <h1>Multiplication Fluency</h1>
+    <p class="subtitle">5th Grade Fact Practice</p>
+
+    <!-- Shown only when resuming a saved session -->
+    <div id="resume-info" class="resume-note hidden"></div>
+
+    <p>
+      First we'll do a quick 2-minute check to see where you are.
+      Then you'll practise facts using flashcard sequences.
+    </p>
+    <button id="btn-start" class="btn-primary">Start Assessment</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       ASSESSMENT SCREEN  (Phase 1 Baseline  &  Phase 3 Level Test)
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="screen-assessment" class="screen hidden">
+    <div class="header-bar">
+      <div id="assess-level-label" class="level-tag">Level A</div>
+      <div id="assess-timer"       class="timer">2:00</div>
+      <div id="assess-phase-label" class="phase-label">Assessment</div>
+    </div>
+
+    <div id="assess-problem" class="problem">? × ? = ?</div>
+    <div id="assess-answer"  class="answer-input">_</div>
+
+    <div id="assess-dcpm"       class="fact-count"></div>
+    <div id="assess-fact-count" class="fact-count"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       PLACEMENT SCREEN  (after baseline)
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="screen-placement" class="screen hidden">
+    <h2>Assessment Complete</h2>
+    <div id="placement-dcpm"    class="placement-dcpm"></div>
+    <div id="placement-message" class="placement-msg"></div>
+    <button id="btn-placement-next" class="btn-primary">Begin Practice</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       PRACTICE SCREEN  (Phase 2 — Incremental Rehearsal)
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="screen-practice" class="screen hidden">
+    <div class="header-bar">
+      <div id="pract-level-label" class="level-tag">Level A</div>
+      <div id="pract-target-progress" class="target-progress">Fact 1 of 3</div>
+      <div id="pract-step-label"  class="phase-label">Step 1 of 1</div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="progress-track">
+      <div id="pract-progress-bar" class="progress-fill"></div>
+    </div>
+    <div class="progress-info">
+      <span id="pract-fact-type" class="fact-type fact-type--new">NEW</span>
+      <span id="pract-progress-pct">0%</span>
+    </div>
+
+    <!-- Fact display -->
+    <div  id="pract-problem"    class="problem">? × ? = ?</div>
+    <div  id="pract-answer"     class="answer-input">_</div>
+
+    <!-- Error correction prompt (hidden until needed) -->
+    <div id="pract-correction" class="correction-prompt hidden"></div>
+
+    <!-- Feedback flash -->
+    <div id="pract-feedback" class="feedback hidden"></div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       LEVEL COMPLETE SCREEN  (all IR done — prompt for level test)
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="screen-level-complete" class="screen hidden">
+    <h2 id="level-complete-title">Level Practice Complete!</h2>
+    <p>All facts for this level are mastered.<br>
+       Now take a timed test to confirm your fluency.</p>
+    <button id="btn-level-test" class="btn-primary">Take 1-Minute Test</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       LEVEL TEST RESULT SCREEN
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="screen-test-result" class="screen hidden">
+    <h2 id="test-result-title">Result</h2>
+    <div id="test-result-dcpm"    class="result-dcpm"></div>
+    <div id="test-result-message" class="result-msg"></div>
+    <button id="btn-test-result-next" class="btn-primary">Continue</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       COMPLETE SCREEN  (all levels mastered)
+  ═══════════════════════════════════════════════════════════════════════ -->
+  <div id="screen-complete" class="screen hidden">
+    <h2>All Done!</h2>
+    <p>You've mastered every multiplication fact. Amazing work!</p>
+    <div id="final-stats"></div>
+  </div>
+
+</div><!-- #app -->
+
+<!-- Hidden teacher reset button (hover to reveal, or use Ctrl+Alt+R) -->
+<button id="admin-reset" class="admin-btn" title="Teacher Reset (Ctrl+Alt+R)">⚙</button>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     SCRIPTS — Engine layer first (no DOM deps), then UI, then App
+═══════════════════════════════════════════════════════════════════════ -->
+<script src="engine/levels.js"></script>
+<script src="engine/dcpm.js"></script>
+<script src="engine/ir.js"></script>
+<script src="engine/mastery.js"></script>
+<script src="engine/progression.js"></script>
+
+<script src="ui/timer.js"></script>
+<script src="ui/display.js"></script>
+<script src="ui/renderer.js"></script>
+<script src="ui/input.js"></script>
+
+<script src="app.js"></script>
+
+</body>
+</html>
