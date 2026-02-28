@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multiplication Fluency</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Welcome / Start
+    ════════════════════════════════════════════ -->
+    <div id="screen-welcome" class="screen active">
+      <div class="center-card">
+        <h1>Multiplication Fluency</h1>
+        <p class="subtitle">Build speed and accuracy with multiplication facts.</p>
+        <button id="btn-start" class="btn-primary">Start</button>
+        <!-- TODO: Replace with Google OAuth / Clever login button when auth is ready -->
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Baseline Assessment (2-minute test)
+    ════════════════════════════════════════════ -->
+    <div id="screen-baseline" class="screen">
+      <div class="test-header">
+        <span class="label">Baseline Test</span>
+        <span id="baseline-timer" class="timer">2:00</span>
+        <span id="baseline-score" class="score">0 correct</span>
+      </div>
+      <div class="problem-area">
+        <div id="baseline-problem" class="problem-display"></div>
+        <input id="baseline-input" class="answer-input" type="number" inputmode="numeric"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               placeholder="?" aria-label="Your answer" />
+      </div>
+      <div class="progress-wrap">
+        <div id="baseline-progress" class="progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: High Fluency Result
+    ════════════════════════════════════════════ -->
+    <div id="screen-high-fluency" class="screen">
+      <div class="center-card">
+        <h2>Congratulations!</h2>
+        <p>Your multiplication fact fluency is already very high.</p>
+        <p class="big-stat" id="high-fluency-dcpm"></p>
+        <p class="teacher-note">Show this screen to your teacher.</p>
+        <button id="btn-retake" class="btn-secondary">Retake initial test</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Diagnostic (binary search, 1-min subtests)
+    ════════════════════════════════════════════ -->
+    <div id="screen-diagnostic" class="screen">
+      <div class="test-header">
+        <span class="label">Diagnostic</span>
+        <span id="diag-timer" class="timer">1:00</span>
+        <span id="diag-score" class="score">0 correct</span>
+      </div>
+      <div class="problem-area">
+        <div id="diag-problem" class="problem-display"></div>
+        <input id="diag-input" class="answer-input" type="number" inputmode="numeric"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               placeholder="?" aria-label="Your answer" />
+      </div>
+      <div class="progress-wrap">
+        <div id="diag-progress" class="progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Practice (Incremental Rehearsal)
+    ════════════════════════════════════════════ -->
+    <div id="screen-practice" class="screen">
+      <div class="test-header">
+        <span id="practice-level-label" class="label">Level A – Practice</span>
+        <span id="practice-timer" class="timer"></span>
+        <span id="practice-fact-progress" class="score"></span>
+      </div>
+      <div class="problem-area">
+        <div id="practice-problem" class="problem-display"></div>
+        <input id="practice-input" class="answer-input" type="number" inputmode="numeric"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               placeholder="?" aria-label="Your answer" />
+      </div>
+      <!-- Error correction panel (hidden by default) -->
+      <div id="error-panel" class="error-panel hidden">
+        <p id="error-msg" class="error-msg"></p>
+        <input id="error-input" class="answer-input small" type="number" inputmode="numeric"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               placeholder="Type the correct answer" aria-label="Retype correct answer" />
+      </div>
+      <div class="progress-wrap">
+        <div id="practice-progress" class="progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Mini Mastery Check (1-min for U1)
+    ════════════════════════════════════════════ -->
+    <div id="screen-mastery-check" class="screen">
+      <div class="test-header">
+        <span id="mastery-check-label" class="label">Mastery Check</span>
+        <span id="mastery-timer" class="timer">1:00</span>
+        <span id="mastery-score" class="score">0 correct</span>
+      </div>
+      <div class="problem-area">
+        <div id="mastery-problem" class="problem-display"></div>
+        <input id="mastery-input" class="answer-input" type="number" inputmode="numeric"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               placeholder="?" aria-label="Your answer" />
+      </div>
+      <div class="progress-wrap">
+        <div id="mastery-progress" class="progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Level Test (end-of-level, 1 min)
+    ════════════════════════════════════════════ -->
+    <div id="screen-level-test" class="screen">
+      <div class="test-header">
+        <span id="level-test-label" class="label">Level Test</span>
+        <span id="level-test-timer" class="timer">1:00</span>
+        <span id="level-test-score" class="score">0 correct</span>
+      </div>
+      <div class="problem-area">
+        <div id="level-test-problem" class="problem-display"></div>
+        <input id="level-test-input" class="answer-input" type="number" inputmode="numeric"
+               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+               placeholder="?" aria-label="Your answer" />
+      </div>
+      <div class="progress-wrap">
+        <div id="level-test-progress" class="progress-bar"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Message / Transition
+    ════════════════════════════════════════════ -->
+    <div id="screen-message" class="screen">
+      <div class="center-card">
+        <p id="message-text" class="message-text"></p>
+        <button id="btn-message-continue" class="btn-primary">Continue</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Level Complete / Advance
+    ════════════════════════════════════════════ -->
+    <div id="screen-level-complete" class="screen">
+      <div class="center-card">
+        <h2 id="level-complete-title">Level Complete!</h2>
+        <p id="level-complete-msg"></p>
+        <p id="level-complete-dcpm" class="big-stat"></p>
+        <button id="btn-level-continue" class="btn-primary">Continue</button>
+        <!-- TODO: Hook for Gamification – fire medal/award event here -->
+      </div>
+    </div>
+
+  </div><!-- /#app -->
+
+  <!-- Scripts loaded in dependency order -->
+  <script src="data.js"></script>
+  <script src="algorithms.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

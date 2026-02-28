@@ -1,0 +1,257 @@
+/* ═══════════════════════════════════════════════════════
+   Multiplication Fluency — Styles
+   Design goals: High contrast, large type, zero distractions.
+   Dark mode default; pure black/white with accent green.
+════════════════════════════════════════════════════════ */
+
+:root {
+  --bg:        #0a0a0a;
+  --surface:   #141414;
+  --border:    #2a2a2a;
+  --text:      #f0f0f0;
+  --muted:     #888;
+  --accent:    #00e676;   /* bright green for answers / progress */
+  --accent2:   #40c4ff;   /* blue for secondary accents */
+  --danger:    #ff5252;
+  --warn:      #ffd740;
+  --font-mono: 'Courier New', Courier, monospace;
+  --radius:    8px;
+  --timer-size: 2rem;
+}
+
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 18px;
+  line-height: 1.4;
+  overflow: hidden; /* single screen; no scroll flash */
+}
+
+#app {
+  height: 100vh;
+  display: flex;
+  align-items: stretch;
+}
+
+/* ── Screen Management ── */
+.screen {
+  display: none;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 24px 16px;
+  overflow-y: auto;
+}
+.screen.active { display: flex; }
+
+/* ── Center Card ── */
+.center-card {
+  margin: auto;
+  text-align: center;
+  max-width: 560px;
+  width: 100%;
+  padding: 40px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.center-card h1 {
+  font-size: 2.4rem;
+  margin-bottom: 12px;
+  letter-spacing: -0.5px;
+}
+
+.center-card h2 {
+  font-size: 2rem;
+  margin-bottom: 12px;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin-bottom: 32px;
+  font-size: 1rem;
+}
+
+/* ── Buttons ── */
+.btn-primary, .btn-secondary {
+  display: inline-block;
+  padding: 14px 40px;
+  border-radius: var(--radius);
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s;
+  margin-top: 16px;
+  letter-spacing: 0.5px;
+}
+.btn-primary  { background: var(--accent);  color: #000; }
+.btn-secondary{ background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+.btn-primary:hover, .btn-secondary:hover { opacity: 0.85; }
+
+/* ── Test Header ── */
+.test-header {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+  flex: 1;
+}
+
+.timer {
+  font-family: var(--font-mono);
+  font-size: var(--timer-size);
+  font-weight: 700;
+  color: var(--accent2);
+  flex: 1;
+  text-align: center;
+}
+.timer.urgent { color: var(--danger); }
+
+.score {
+  font-size: 0.9rem;
+  color: var(--muted);
+  flex: 1;
+  text-align: right;
+}
+
+/* ── Problem Display ── */
+.problem-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 32px;
+  width: 100%;
+  max-width: 680px;
+}
+
+.problem-display {
+  font-family: var(--font-mono);
+  font-size: 6rem;          /* minimum 48px; default much larger */
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 4px;
+  text-align: center;
+  line-height: 1;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Color the "?" answer placeholder */
+.problem-display .answer-part {
+  color: var(--accent);
+}
+
+/* ── Answer Input ── */
+.answer-input {
+  background: var(--surface);
+  border: 3px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 3.5rem;
+  font-weight: 700;
+  width: 220px;
+  text-align: center;
+  padding: 12px 16px;
+  outline: none;
+  transition: border-color 0.15s;
+  /* Hide number spinners */
+  -moz-appearance: textfield;
+}
+.answer-input::-webkit-outer-spin-button,
+.answer-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.answer-input:focus { border-color: var(--accent2); }
+.answer-input.small { font-size: 2rem; width: 160px; }
+.answer-input.correct { border-color: var(--accent); }
+.answer-input.wrong   { border-color: var(--danger); }
+
+/* ── Error Panel ── */
+.error-panel {
+  background: #1a0000;
+  border: 2px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 20px 28px;
+  text-align: center;
+  width: 100%;
+  max-width: 480px;
+}
+.error-msg {
+  font-size: 1.2rem;
+  margin-bottom: 16px;
+  color: var(--warn);
+}
+.error-panel.hidden { display: none; }
+
+/* ── Progress Bar ── */
+.progress-wrap {
+  width: 100%;
+  max-width: 680px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  margin-top: 16px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+/* ── Big stat (DCPM display) ── */
+.big-stat {
+  font-family: var(--font-mono);
+  font-size: 3rem;
+  color: var(--accent);
+  margin: 16px 0;
+  font-weight: 700;
+}
+
+/* ── Teacher note ── */
+.teacher-note {
+  font-size: 1.1rem;
+  color: var(--warn);
+  margin: 8px 0 20px;
+}
+
+/* ── Message text ── */
+.message-text {
+  font-size: 1.4rem;
+  line-height: 1.6;
+  margin-bottom: 24px;
+  color: var(--text);
+}
+
+/* ── Responsive ── */
+@media (max-width: 480px) {
+  .problem-display { font-size: 4rem; min-height: 80px; }
+  .answer-input     { font-size: 2.5rem; width: 180px; }
+  .timer            { font-size: 1.5rem; }
+  .center-card h1   { font-size: 1.8rem; }
+}
