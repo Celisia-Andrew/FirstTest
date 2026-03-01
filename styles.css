@@ -187,21 +187,23 @@ html, body {
 .answer-input.small   { font-size: 2.2rem; width: 160px; }
 
 /* ── Answer Echo (floating ghost) ── */
+/* translateX(-50%) is baked into both keyframes so there is no horizontal drift. */
 @keyframes echoFloat {
-  0%   { opacity: 1;   transform: translateY(0) scale(1); }
-  100% { opacity: 0;   transform: translateY(-28px) scale(0.85); }
+  0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
 }
 .answer-echo {
   position: fixed;
-  font-family: var(--font-mono);
-  font-size: 2rem;
+  font-family: 'Courier New', Courier, monospace; /* match .answer-input */
+  font-size: 3.5rem;                              /* match .answer-input */
   font-weight: 700;
   pointer-events: none;
   z-index: 500;
+  white-space: nowrap;
   animation: echoFloat 0.45s ease-out forwards;
 }
-.answer-echo.correct { color: var(--accent); }
-.answer-echo.wrong   { color: var(--danger); }
+.answer-echo.correct { color: #39FF14; }
+.answer-echo.wrong   { color: #FF3131; }
 
 /* ── Error Correction Panel (DI-style) ── */
 .error-panel {
@@ -338,6 +340,30 @@ html, body {
   line-height: 1.6;
   margin-bottom: 24px;
   color: var(--text);
+}
+
+/* ── Mastery Check Prep Screen (#2) ── */
+#screen-mastery-prep {
+  background: #000;
+  transition: opacity 0.2s ease;
+}
+#screen-mastery-prep.fading { opacity: 0; }
+
+.mastery-prep-card {
+  background: #000 !important;
+  border-color: var(--cyber) !important;
+}
+.mastery-prep-praise {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--cyber);
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+.mastery-prep-instruction {
+  font-size: 1.15rem;
+  color: #FFD700;
+  margin-bottom: 24px;
 }
 
 /* ── Countdown Overlay ── */

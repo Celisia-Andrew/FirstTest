@@ -66,58 +66,70 @@ function buildLevelWeightedFacts(levelKeys, count) {
    @returns {Array<{display, answer, isUnknown, fact}>}  Up to 9 known cards
 ───────────────────────────────────────────── */
 function buildSessionBank(unknown, knownPool, levelKey) {
-  const TARGET = 9;
+  const TARGET   = 9;
+  const [ua, ub] = unknown;
 
   // Level A: no prior multiplication facts — always use addition/subtraction knowns
   if (levelKey === 'A') {
     return LEVEL_A_ADDITION_KNOWNS.map(k => ({
-      display: k.display,
-      answer:  k.answer,
-      isUnknown: false,
-      fact: null,
+      display: k.display, answer: k.answer, isUnknown: false, fact: null,
     }));
   }
 
-  // All other levels: 4-tier hierarchical selection from knownPool
-  if (knownPool.length === 0) {
+  // ── 0/1 Blacklists ──────────────────────────────────────────────────
+  // Exclude 1-facts unless U1 itself contains a 1 (identity property).
+  // Exclude 0-facts unless U1 itself contains a 0 (zero property).
+  const u1Has1 = (ua === 1 || ub === 1);
+  const u1Has0 = (ua === 0 || ub === 0);
+
+  const filteredPool = knownPool.filter(([a, b]) => {
+    if (!u1Has1 && (a === 1 || b === 1)) return false;
+    if (!u1Has0 && (a === 0 || b === 0)) return false;
+    return true;
+  });
+
+  // Fallback: if nothing survives the filter, use addition/subtraction fillers
+  if (filteredPool.length === 0) {
     return LEVEL_A_ADDITION_KNOWNS.slice(0, TARGET).map(k => ({
       display: k.display, answer: k.answer, isUnknown: false, fact: null,
     }));
   }
 
-  const [ua, ub] = unknown;
+  // ── 4-Tier Hierarchical Selection ───────────────────────────────────
+  // T1: Commutative match  — fact = [ub, ua]
+  // T2: First-factor anchor — fact[0] === ua          (≠ T1)
+  // T3: Remaining shared    — any other factor overlap (≠ T1, T2)
+  // T4: No shared factors   — everything else
   const tier1 = [], tier2 = [], tier3 = [], tier4 = [];
 
-  for (const fact of knownPool) {
+  for (const fact of filteredPool) {
     const [a, b] = fact;
     if (a === ub && b === ua) {
-      // T1: commutative match (both factors swapped)
       tier1.push(fact);
     } else if (a === ua) {
-      // T2: first-factor anchor
       tier2.push(fact);
     } else if (a === ub || b === ub || b === ua) {
-      // T3: any remaining shared factor
       tier3.push(fact);
     } else {
-      // T4: no shared factors
       tier4.push(fact);
     }
   }
 
-  console.log(
-    `Target: [${ua}×${ub}], ` +
-    `Tier1: ${tier1.length}, Tier2: ${tier2.length}, ` +
-    `Tier3: ${tier3.length}, Tier4: ${tier4.length}, ` +
-    `Total pool: ${knownPool.length}`
-  );
-
+  // Fill slots: EXHAUST each tier completely before moving to the next.
+  // If T1+T2 ≥ 9, never pull from T3 or T4.
   const selected = [];
   for (const tier of [tier1, tier2, tier3, tier4]) {
     if (selected.length >= TARGET) break;
-    const picks = sample(tier, Math.min(tier.length, TARGET - selected.length));
+    const need  = TARGET - selected.length;
+    const picks = sample(tier, Math.min(tier.length, need));
     selected.push(...picks);
   }
+
+  const bankDisplay = selected.map(([a, b]) => `${a}×${b}`).join(', ');
+  console.log(
+    `U1: [${ua}×${ub}], Current Level: ${levelKey}, ` +
+    `Mastered Pool Size: ${filteredPool.length}, Bank Selected: [${bankDisplay}]`
+  );
 
   return selected.map(fact => ({
     display:   `${fact[0]} × ${fact[1]}`,

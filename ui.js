@@ -141,8 +141,10 @@ function showAnswerEcho(inputEl, displayText, isCorrect) {
   const ghost = document.createElement('div');
   ghost.className = `answer-echo ${isCorrect ? 'correct' : 'wrong'}`;
   ghost.textContent = displayText;
-  ghost.style.left = `${rect.left + rect.width / 2 - 40}px`;
-  ghost.style.top  = `${rect.top - 12}px`;
+  // Anchor to the horizontal center of the input; the CSS animation bakes
+  // translateX(-50%) into both keyframes so there is zero horizontal drift.
+  ghost.style.left = `${rect.left + rect.width / 2}px`;
+  ghost.style.top  = `${rect.top}px`;
   document.body.appendChild(ghost);
   setTimeout(() => ghost.remove(), 500);
 }
@@ -323,4 +325,48 @@ function showNewLevel(newLevelKey, nextFact, praise, onProceed) {
   newBtn.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); onProceed(); }
   }, { once: true });
+}
+
+/* ─────────────────────────────────────────────
+   MASTERY CHECK PREP SCREEN  (#2)
+   Buffer between the last IR card and the mastery-check countdown.
+
+   Displays: "[Praise]! You practiced this fact well. Now you're ready to
+              flex your fluency!" in Cyber Green, plus a gold reminder line,
+              then a large centered 'Begin' button.
+
+   The button is auto-focused; click/Enter/Space trigger a 200ms fade-out
+   and then call onBegin() (which runs the 3-2-1-GO! countdown).
+───────────────────────────────────────────── */
+function showMasteryPrep(praise, onBegin) {
+  document.getElementById('mastery-prep-praise').textContent =
+    `${praise} You practiced this fact well. Now you're ready to flex your fluency!`;
+
+  showScreen('screen-mastery-prep');
+
+  const btn    = document.getElementById('btn-mastery-prep-begin');
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+  newBtn.focus({ preventScroll: true });
+
+  function trigger() {
+    newBtn.removeEventListener('click',   trigger);
+    newBtn.removeEventListener('keydown', onKey);
+    const screen = document.getElementById('screen-mastery-prep');
+    screen.classList.add('fading');
+    setTimeout(() => {
+      screen.classList.remove('fading');
+      onBegin();
+    }, 200);
+  }
+
+  function onKey(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      trigger();
+    }
+  }
+
+  newBtn.addEventListener('click',   trigger);
+  newBtn.addEventListener('keydown', onKey);
 }

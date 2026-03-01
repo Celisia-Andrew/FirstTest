@@ -276,32 +276,54 @@ function startRegularIR(levelKey) {
 
   const unknown = facts[irState.factIndex];
 
-  const masteredFacts = studentData.masteredFacts.map(k => parseFactKey(k));
-  const priorInLevel  = facts.slice(0, irState.factIndex);
-  const knownPool     = [...masteredFacts, ...priorInLevel];
-  irState.sessionBank = buildSessionBank(unknown, knownPool, levelKey);
+  // Global Mastery Rule (#1): all facts from levels alphabetically before the
+  // current level are treated as mastered for IR bank selection, regardless of
+  // explicit mastery records (handles students who tested into higher levels).
+  const levelIdx = LEVEL_ORDER.indexOf(levelKey);
+  const seenKeys = new Set();
+  const globalPool = [];
+  for (let i = 0; i < levelIdx; i++) {
+    for (const f of LEVEL_MAP[LEVEL_ORDER[i]].facts) {
+      const k = `${f[0]}x${f[1]}`;
+      if (!seenKeys.has(k)) { seenKeys.add(k); globalPool.push(f); }
+    }
+  }
+  // Also include any facts from the current level that precede U1 in sequence
+  for (const f of facts.slice(0, irState.factIndex)) {
+    const k = `${f[0]}x${f[1]}`;
+    if (!seenKeys.has(k)) { seenKeys.add(k); globalPool.push(f); }
+  }
 
-  irState.sequence = generateIRSequence(unknown, irState.sessionBank);
-  irState.seqIndex = 0;
+  irState.sessionBank = buildSessionBank(unknown, globalPool, levelKey);
+  irState.sequence    = generateIRSequence(unknown, irState.sessionBank);
+  irState.seqIndex    = 0;
 
-  showCountdown(() => {
-    showPracticeScreen(levelKey, irState.factIndex + 1, facts.length);
-    displayIRCard();
-  });
+  // #4: No countdown before IR practice — show first card immediately.
+  showPracticeScreen(levelKey, irState.factIndex + 1, facts.length);
+  displayIRCard();
 }
 
 /* ── Rule-based IR (Level A, F: whole family as one cycle) ── */
 function startRuleBasedIR(levelKey) {
-  const masteredFacts = studentData.masteredFacts.map(k => parseFactKey(k));
-  const refFact = LEVEL_MAP[levelKey].facts[0];
-  irState.sessionBank  = buildSessionBank(refFact, masteredFacts, levelKey);
-  irState.sequence     = generateRuleBasedIRSequence(levelKey, irState.sessionBank);
-  irState.seqIndex     = 0;
+  // Global Mastery Rule (#1): all facts from prior levels treated as mastered.
+  const levelIdx = LEVEL_ORDER.indexOf(levelKey);
+  const seenKeys = new Set();
+  const globalPool = [];
+  for (let i = 0; i < levelIdx; i++) {
+    for (const f of LEVEL_MAP[LEVEL_ORDER[i]].facts) {
+      const k = `${f[0]}x${f[1]}`;
+      if (!seenKeys.has(k)) { seenKeys.add(k); globalPool.push(f); }
+    }
+  }
 
-  showCountdown(() => {
-    showPracticeScreen(levelKey, null, null);
-    displayIRCard();
-  });
+  const refFact       = LEVEL_MAP[levelKey].facts[0];
+  irState.sessionBank = buildSessionBank(refFact, globalPool, levelKey);
+  irState.sequence    = generateRuleBasedIRSequence(levelKey, irState.sessionBank);
+  irState.seqIndex    = 0;
+
+  // #4: No countdown before IR practice — show first card immediately.
+  showPracticeScreen(levelKey, null, null);
+  displayIRCard();
 }
 
 function showPracticeScreen(levelKey, factNum, totalFacts) {
@@ -371,20 +393,22 @@ function handlePracticeInput(inputEl) {
 }
 
 function irSequenceComplete() {
+  // Set up mastery state before showing the prep buffer screen.
   if (irState.isRuleBased) {
     masteryState.unknown     = null;
     masteryState.isRuleBased = true;
     masteryState.levelKey    = irState.levelKey;
     masteryState.attempts    = 0;
-    runMasteryCheck(true);
   } else {
-    const unknown = LEVEL_MAP[irState.levelKey].facts[irState.factIndex];
-    masteryState.unknown     = unknown;
+    masteryState.unknown     = LEVEL_MAP[irState.levelKey].facts[irState.factIndex];
     masteryState.isRuleBased = false;
     masteryState.levelKey    = irState.levelKey;
     masteryState.attempts    = 0;
-    runMasteryCheck(true);
   }
+
+  // #2: Show Mastery Prep buffer screen; the Begin button triggers the countdown.
+  const praise = getRandomPraise();
+  showMasteryPrep(praise, () => runMasteryCheck(true));
 }
 
 /* ── Error Correction Handler  (#3) ── */
@@ -563,9 +587,8 @@ function masteryCheckPass(dcpm) {
 
     if (nextLevel) {
       const nextFact = LEVEL_MAP[nextLevel].facts[0] || null;
-      showNewLevel(nextLevel, nextFact, praise, () => {
-        showCountdown(() => startPracticeLevel(nextLevel));
-      });
+      // #4: No countdown before IR practice from the New Level screen.
+      showNewLevel(nextLevel, nextFact, praise, () => startPracticeLevel(nextLevel));
     } else {
       showLevelComplete(
         'All Levels Complete!',
@@ -591,8 +614,9 @@ function masteryCheckPass(dcpm) {
     const totalFacts = facts.length;
     const nextFact   = irState.factIndex < totalFacts ? facts[irState.factIndex] : null;
 
+    // #4: No countdown before IR practice; practiceNextFact() shows first card directly.
     showFactProgress(levelKey, irState.factIndex, totalFacts, nextFact, praise, () => {
-      showCountdown(() => practiceNextFact());
+      practiceNextFact();
     });
   }
 }
@@ -727,9 +751,8 @@ function advanceToNextLevel(completedLevel, dcpm) {
   if (nextLevel) {
     const praise   = getRandomPraise();
     const nextFact = LEVEL_MAP[nextLevel].facts[0] || null;
-    showNewLevel(nextLevel, nextFact, praise, () => {
-      showCountdown(() => startPracticeLevel(nextLevel));
-    });
+    // #4: No countdown before IR practice from the New Level screen.
+    showNewLevel(nextLevel, nextFact, praise, () => startPracticeLevel(nextLevel));
   } else {
     showLevelComplete(
       'All Levels Complete!',
