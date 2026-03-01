@@ -1,20 +1,22 @@
 /* ═══════════════════════════════════════════════════════════════════════
    algorithms.js — Core pedagogical algorithms.
 
-   Exports (global functions, no module system required for SPA):
+   Public functions (all global, no module system needed for SPA):
      calculateDCPM(correctDigits, elapsedSeconds)
-     generateIRSequence(unknown, masteredFacts, currentLevelKey, factIndexInLevel)
-     buildMasteryCheckSequence(unknown, allMasteredFacts, durationSeconds)
-     buildLevelTestFacts(currentLevelKey, allMasteredFacts)
-     buildDiagnosticFacts(startKey, endKey)
-     buildBaselineFacts()
+     buildSessionBank(unknown, knownPool, levelKey)
+     generateIRSequence(unknown, sessionBank)
+     generateRuleBasedIRSequence(levelKey, sessionBank)
+     buildMasteryCheckSequence(unknown, allMasteredFacts)
+     buildRuleBasedMasteryCheckSequence(levelKey, allMasteredFacts)
+     buildLevelTestFacts(currentLevelKey, masteredFactKeys)
+     buildLevelWeightedFacts(levelKeys, count)
 ════════════════════════════════════════════════════════════════════════ */
 
 'use strict';
 
 /* ─────────────────────────────────────────────
-   DCPM — Digits Correct Per Minute
-   Spec: count correct digits (right-aligned), scaled to 60 seconds.
+   DCPM
+   Formula: (correctDigits / seconds) × 60
 ───────────────────────────────────────────── */
 function calculateDCPM(correctDigits, elapsedSeconds) {
   if (elapsedSeconds <= 0) return 0;
@@ -22,13 +24,57 @@ function calculateDCPM(correctDigits, elapsedSeconds) {
 }
 
 /* ─────────────────────────────────────────────
-   KNOWN-FACT HIERARCHY  (for IR sequence building)
+   LEVEL-WEIGHTED FACT GENERATOR  (#2 — Fair Sampling)
 
-   Given an unknown fact [a, b] and a pool of known facts,
-   partition knowns into three buckets:
-     tier1: share BOTH factors (a and b)
-     tier2: share exactly ONE factor (a OR b)
-     tier3: everything else
+   Instead of a flat list (which over-represents large levels like A & F),
+   this picks a random LEVEL first, then a random fact from that level.
+   Every level gets equal probability regardless of fact count.
+
+   @param {string[]} levelKeys  Array of level keys to sample from (e.g. LEVEL_ORDER)
+   @param {number}   count      How many problem cards to generate
+   @returns {Array<{display, answer, fact}>}
+───────────────────────────────────────────── */
+function buildLevelWeightedFacts(levelKeys, count) {
+  const result = [];
+  for (let i = 0; i < count; i++) {
+    const lk    = levelKeys[Math.floor(Math.random() * levelKeys.length)];
+    const facts = LEVEL_MAP[lk].facts;
+    const f     = facts[Math.floor(Math.random() * facts.length)];
+    result.push({ display: `${f[0]} × ${f[1]}`, answer: factProduct(f), fact: f });
+  }
+  return result;
+}
+
+/* ─────────────────────────────────────────────
+   BASELINE FACTS  (2-minute test, all levels A-Z)
+───────────────────────────────────────────── */
+function buildBaselineFacts() {
+  return buildLevelWeightedFacts(LEVEL_ORDER, 240);
+}
+
+/* ─────────────────────────────────────────────
+   DIAGNOSTIC FACTS  (1-minute subtest, level range)
+───────────────────────────────────────────── */
+function buildDiagnosticFacts(startKey, endKey) {
+  // Collect all level keys in [startKey, endKey]
+  const keys = [];
+  let inRange = false;
+  for (const lk of LEVEL_ORDER) {
+    if (lk === startKey) inRange = true;
+    if (inRange) keys.push(lk);
+    if (lk === endKey) break;
+  }
+  if (keys.length === 0) return [];
+  return buildLevelWeightedFacts(keys, 120);
+}
+
+/* ─────────────────────────────────────────────
+   HIERARCHICAL FACT PARTITIONING  (for Session Bank selection)
+
+   Given an unknown [a, b] and a pool of mastered facts, split pool into:
+     tier1 — shares BOTH factors with unknown
+     tier2 — shares exactly ONE factor
+     tier3 — shares no factors
 ───────────────────────────────────────────── */
 function partitionKnownsByTier(unknown, knownFacts) {
   const [ua, ub] = unknown;
@@ -36,135 +82,116 @@ function partitionKnownsByTier(unknown, knownFacts) {
 
   for (const fact of knownFacts) {
     const [a, b] = fact;
-    const shareA = (a === ua || a === ub);
-    const shareB = (b === ua || b === ub);
-    const shared = (shareA ? 1 : 0) + (shareB ? 1 : 0);
-    if (shared === 2)      tier1.push(fact);
+    const shared = ((a === ua || a === ub) ? 1 : 0)
+                 + ((b === ua || b === ub) ? 1 : 0);
+    if      (shared === 2) tier1.push(fact);
     else if (shared === 1) tier2.push(fact);
     else                   tier3.push(fact);
   }
   return { tier1, tier2, tier3 };
 }
 
-/**
- * Collect up to 9 known facts for the IR sequence.
- * Priority: tier1 → tier2 → tier3 (random within each tier).
- *
- * knownMultFacts: Array of [a,b] pairs that are already mastered
- *   (all facts from previous levels + prior facts in current level).
- * isLevelA: boolean — if true, return addition/subtraction stubs instead.
- */
-function selectKnownFacts(unknown, knownMultFacts, isLevelA) {
+/* ─────────────────────────────────────────────
+   SESSION BANK BUILDER  (#5 — Hierarchical selection)
+
+   Selects exactly 9 (or fewer if pool is small) known cards for a U1 cycle.
+   Priority: Tier1 → Tier2 → Tier3 (random within each tier).
+
+   Special cases:
+   - Level A unknowns: no prior multiplication facts → use 9 addition/subtraction facts.
+   - Level F unknowns: mastered pool is A-E; partition uses [0, n] representative.
+
+   @param {[number,number]} unknown    The target fact [a, b]
+   @param {[number,number][]} knownPool  All mastered mult facts as [a,b] pairs
+   @param {string} levelKey            Current level key (used for A special-case)
+   @returns {Array<{display, answer, isUnknown, fact}>}  Up to 9 known cards
+───────────────────────────────────────────── */
+function buildSessionBank(unknown, knownPool, levelKey) {
   const TARGET = 9;
 
-  // Level A: no prior multiplication facts; use addition/subtraction knowns
-  if (isLevelA) {
-    // Return copies of the LEVEL_A_ADDITION_KNOWNS objects (defined in data.js)
-    return LEVEL_A_ADDITION_KNOWNS.slice();
+  // Level A: no prior multiplication facts — always use addition/subtraction knowns
+  if (levelKey === 'A') {
+    return LEVEL_A_ADDITION_KNOWNS.map(k => ({
+      display: k.display,
+      answer:  k.answer,
+      isUnknown: false,
+      fact: null,
+    }));
   }
 
-  const { tier1, tier2, tier3 } = partitionKnownsByTier(unknown, knownMultFacts);
+  // All other levels: hierarchical selection from knownPool
+  if (knownPool.length === 0) {
+    // Edge case: somehow empty pool (should not happen past Level A)
+    return LEVEL_A_ADDITION_KNOWNS.slice(0, TARGET).map(k => ({
+      display: k.display, answer: k.answer, isUnknown: false, fact: null,
+    }));
+  }
 
+  const { tier1, tier2, tier3 } = partitionKnownsByTier(unknown, knownPool);
   const selected = [];
 
-  // Take all tier1 (at most TARGET)
   const t1 = sample(tier1, Math.min(tier1.length, TARGET));
   selected.push(...t1);
 
-  // Fill from tier2
   if (selected.length < TARGET) {
-    const need = TARGET - selected.length;
-    const t2 = sample(tier2, Math.min(tier2.length, need));
+    const t2 = sample(tier2, Math.min(tier2.length, TARGET - selected.length));
     selected.push(...t2);
   }
 
-  // Fill remainder from tier3
   if (selected.length < TARGET) {
-    const need = TARGET - selected.length;
-    const t3 = sample(tier3, Math.min(tier3.length, need));
+    const t3 = sample(tier3, Math.min(tier3.length, TARGET - selected.length));
     selected.push(...t3);
   }
 
-  // Map to the same shape as addition knowns for uniform handling downstream
   return selected.map(fact => ({
+    display:   `${fact[0]} × ${fact[1]}`,
+    answer:    factProduct(fact),
+    isUnknown: false,
     fact,
-    display: `${fact[0]} × ${fact[1]}`,
-    answer: factProduct(fact),
   }));
 }
 
 /* ─────────────────────────────────────────────
-   INCREMENTAL REHEARSAL (IR) SEQUENCE GENERATOR
+   IR SEQUENCE GENERATOR  (#4 & #5 — Shuffled Folding-In)
 
-   Returns an ordered array of "cards" for a single IR session on unknown U.
-   Each card: { display, answer, isUnknown, fact|null }
+   Produces the full 10-step (U + up to 9 Knowns) flat sequence.
+   Total cards = 1 + 2 + 3 + … + (n+1) where n = sessionBank.length (≤9).
 
-   Sequence structure (1:9 ratio):
-     [U]
-     [U, K1]
-     [U, K1, K2]
+   Structure:
+     Step 1:  [U]
+     Step 2:  [U, K(random)]
+     Step 3:  [U, K(rand), K(rand, unique-per-step)]
      ...
-     [U, K1, K2, ..., K9]
+     Step 10: [U, K×9 unique random draws from bank]
 
-   But rather than re-presenting all previous cards, we produce the
-   FLAT interleaved sequence:
-     U, K1, U, K2, U, K3, ... U, K9
-   which achieves the same effect and is simpler to navigate.
+   The bank is fixed for the entire U1 cycle.  The K SLOTS within each
+   step are re-randomised every time this function is called (so restarts
+   after an error produce a fresh shuffle from the same bank).
 
-   Spec from requirements:
-     U1 → (U1, K1) → (U1, K1, K2) → ... → (U1, K1, ... K9)
-   Interpretation: after each new K is introduced, the student sees
-   the whole sequence from U1 again. We implement this as rounds:
-     Round 0: [U]
-     Round 1: [U, K1]
-     Round 2: [U, K1, K2]
-     ... etc.
-   This produces a sequence that grows incrementally.
+   @param {[number,number]} unknown      Target fact [a,b]
+   @param {Array}           sessionBank  9-fact bank returned by buildSessionBank()
+   @returns {Array<{display, answer, isUnknown, fact}>}
 ───────────────────────────────────────────── */
-
-/**
- * Generate the full IR card sequence for one unknown.
- * @param {[number,number]} unknown  - the target fact [a,b]
- * @param {Array}           knownPool - known mult facts as [a,b] pairs
- * @param {boolean}         isLevelA
- * @returns {Array<{display:string, answer:number, isUnknown:boolean, fact:[number,number]|null}>}
- */
-function generateIRSequence(unknown, knownPool, isLevelA) {
+function generateIRSequence(unknown, sessionBank) {
   const unknownCard = {
-    display: `${unknown[0]} × ${unknown[1]}`,
-    answer: factProduct(unknown),
+    display:   `${unknown[0]} × ${unknown[1]}`,
+    answer:    factProduct(unknown),
     isUnknown: true,
-    fact: unknown,
+    fact:      unknown,
   };
 
-  const knowns = selectKnownFacts(unknown, knownPool, isLevelA);
-
-  // Build rounds: round i has cards [U, K0..Ki-1]
-  // Flatten into a sequence
   const sequence = [];
 
-  // Round 0: just the unknown
+  // Step 1: just [U]
   sequence.push({ ...unknownCard });
 
-  for (let i = 0; i < knowns.length; i++) {
-    const k = knowns[i];
-    const knownCard = {
-      display: k.display || `${k.fact[0]} × ${k.fact[1]}`,
-      answer: k.answer,
-      isUnknown: false,
-      fact: k.fact || null,
-    };
-
-    // Present: U, K0, K1, ... Ki  (a new round starts with U)
+  // Steps 2 … (bankSize + 1): [U, K×i]
+  for (let i = 1; i <= sessionBank.length; i++) {
     sequence.push({ ...unknownCard });
-    for (let j = 0; j <= i; j++) {
-      const kj = knowns[j];
-      sequence.push({
-        display: kj.display || `${kj.fact[0]} × ${kj.fact[1]}`,
-        answer: kj.answer,
-        isUnknown: false,
-        fact: kj.fact || null,
-      });
+    // Pick i unique random knowns from the bank for THIS step
+    const picked = sample(sessionBank, i);
+    for (const k of picked) {
+      sequence.push({ ...k });
     }
   }
 
@@ -172,19 +199,56 @@ function generateIRSequence(unknown, knownPool, isLevelA) {
 }
 
 /* ─────────────────────────────────────────────
-   MINI MASTERY CHECK SEQUENCE
+   RULE-BASED IR SEQUENCE  (#2 — Levels A & F)
 
-   After completing the full IR sequence for U1, run a 1-minute test.
-   Rules:
-   - U1 appears randomly every 5–10 facts (unpredictable)
-   - Other facts are purely random from allMasteredFacts
-   - Returns a generator-style "infinite" array large enough for 1 min.
-     (~60 problems at 1/second; we generate 120 to be safe)
+   For commutative levels (A=1s, F=0s), we treat the entire family as
+   ONE learning target.  The "unknown" slot rotates through the level's
+   fact pool so the student practises all permutations naturally within
+   the single 10-step folding-in cycle.
+
+   @param {string} levelKey      'A' or 'F'
+   @param {Array}  sessionBank   9-fact bank (addition facts for A; mastered facts for F)
+   @returns {Array<{display, answer, isUnknown, fact}>}
+───────────────────────────────────────────── */
+function generateRuleBasedIRSequence(levelKey, sessionBank) {
+  const levelFacts  = LEVEL_MAP[levelKey].facts;
+  const rotatingPool = shuffle(levelFacts.slice());  // random rotation order
+  let   poolIdx      = 0;
+
+  function nextUnknownCard() {
+    const f = rotatingPool[poolIdx % rotatingPool.length];
+    poolIdx++;
+    return { display: `${f[0]} × ${f[1]}`, answer: factProduct(f), isUnknown: true, fact: f };
+  }
+
+  const sequence = [];
+
+  // Step 1
+  sequence.push(nextUnknownCard());
+
+  // Steps 2 … (bankSize + 1)
+  for (let i = 1; i <= sessionBank.length; i++) {
+    sequence.push(nextUnknownCard());
+    const picked = sample(sessionBank, i);
+    for (const k of picked) {
+      sequence.push({ ...k });
+    }
+  }
+
+  return sequence;
+}
+
+/* ─────────────────────────────────────────────
+   MASTERY CHECK SEQUENCE  (1-minute, individual fact)
+
+   U1 appears at random intervals of 5–10 problems.
+   Filler facts are purely random from allMasteredFacts.
+   If no mastered facts exist yet, U1 fills all slots.
 ───────────────────────────────────────────── */
 function buildMasteryCheckSequence(unknown, allMasteredFacts) {
   const MAX_PROBLEMS = 120;
-  const sequence = [];
-  let nextUnknownAt = 5 + Math.floor(Math.random() * 6); // first U at index 5-10
+  const sequence     = [];
+  let nextUnknownAt  = 5 + Math.floor(Math.random() * 6);
 
   const unknownDisplay = `${unknown[0]} × ${unknown[1]}`;
   const unknownAnswer  = factProduct(unknown);
@@ -193,16 +257,49 @@ function buildMasteryCheckSequence(unknown, allMasteredFacts) {
     if (i === nextUnknownAt) {
       sequence.push({ display: unknownDisplay, answer: unknownAnswer, isUnknown: true, fact: unknown });
       nextUnknownAt = i + 5 + Math.floor(Math.random() * 6);
+    } else if (allMasteredFacts.length > 0) {
+      const f      = allMasteredFacts[Math.floor(Math.random() * allMasteredFacts.length)];
+      const parsed = Array.isArray(f) ? f : parseFactKey(f);
+      sequence.push({ display: `${parsed[0]} × ${parsed[1]}`, answer: factProduct(parsed), isUnknown: false, fact: parsed });
     } else {
-      // Random from mastered facts (can include unknown itself if already mastered)
-      if (allMasteredFacts.length > 0) {
-        const f = allMasteredFacts[Math.floor(Math.random() * allMasteredFacts.length)];
-        const parsed = Array.isArray(f) ? f : parseFactKey(f);
-        sequence.push({ display: `${parsed[0]} × ${parsed[1]}`, answer: factProduct(parsed), isUnknown: false, fact: parsed });
-      } else {
-        // No mastered facts yet (rare edge case in Level A); repeat unknown
-        sequence.push({ display: unknownDisplay, answer: unknownAnswer, isUnknown: true, fact: unknown });
-      }
+      // No mastered facts yet → repeat unknown
+      sequence.push({ display: unknownDisplay, answer: unknownAnswer, isUnknown: true, fact: unknown });
+    }
+  }
+
+  return sequence;
+}
+
+/* ─────────────────────────────────────────────
+   RULE-BASED MASTERY CHECK SEQUENCE  (Levels A & F)
+
+   For commutative levels the "unknown" is the whole family.
+   Level facts appear randomly every 5–10 problems.
+   Filler: addition facts (Level A) or random mastered mult facts (Level F+).
+───────────────────────────────────────────── */
+function buildRuleBasedMasteryCheckSequence(levelKey, allMasteredFacts) {
+  const levelFacts  = LEVEL_MAP[levelKey].facts;
+  const MAX         = 120;
+  const sequence    = [];
+  let nextLevelAt   = 5 + Math.floor(Math.random() * 6);
+
+  for (let i = 0; i < MAX; i++) {
+    if (i === nextLevelAt) {
+      const f = levelFacts[Math.floor(Math.random() * levelFacts.length)];
+      sequence.push({ display: `${f[0]} × ${f[1]}`, answer: factProduct(f), isUnknown: true, fact: f });
+      nextLevelAt = i + 5 + Math.floor(Math.random() * 6);
+    } else if (levelKey === 'A') {
+      // Filler: addition/subtraction facts
+      const k = LEVEL_A_ADDITION_KNOWNS[Math.floor(Math.random() * LEVEL_A_ADDITION_KNOWNS.length)];
+      sequence.push({ display: k.display, answer: k.answer, isUnknown: false, fact: null });
+    } else if (allMasteredFacts.length > 0) {
+      // Filler: random mastered multiplication fact
+      const f      = allMasteredFacts[Math.floor(Math.random() * allMasteredFacts.length)];
+      const parsed = Array.isArray(f) ? f : parseFactKey(f);
+      sequence.push({ display: `${parsed[0]} × ${parsed[1]}`, answer: factProduct(parsed), isUnknown: false, fact: parsed });
+    } else {
+      const f = levelFacts[Math.floor(Math.random() * levelFacts.length)];
+      sequence.push({ display: `${f[0]} × ${f[1]}`, answer: factProduct(f), isUnknown: true, fact: f });
     }
   }
 
@@ -212,111 +309,16 @@ function buildMasteryCheckSequence(unknown, allMasteredFacts) {
 /* ─────────────────────────────────────────────
    LEVEL TEST FACTS
    1-minute test: current level facts + all mastered previous facts.
-   Returns a large shuffled pool (auto-cycles as needed).
+   Uses level-weighted sampling to balance representation.
 ───────────────────────────────────────────── */
 function buildLevelTestFacts(currentLevelKey, masteredFactKeys) {
-  const currentLevelFacts = LEVEL_MAP[currentLevelKey].facts;
-  const masteredFacts = masteredFactKeys.map(k => parseFactKey(k));
-
-  const pool = [...currentLevelFacts, ...masteredFacts];
-  shuffle(pool);
-
-  // Expand to ~120 by cycling
-  const expanded = [];
-  while (expanded.length < 120) {
-    expanded.push(...pool.map(f => ({
-      display: `${f[0]} × ${f[1]}`,
-      answer: factProduct(f),
-      fact: f,
-    })));
+  // Levels to sample from: all mastered levels + current level
+  const masteredLevelKeys = [];
+  for (const lk of LEVEL_ORDER) {
+    const allMastered = LEVEL_MAP[lk].facts.every(f => masteredFactKeys.includes(factKey(f)));
+    if (allMastered && lk !== currentLevelKey) masteredLevelKeys.push(lk);
+    if (lk === currentLevelKey) break;
   }
-  shuffle(expanded);
-  return expanded.slice(0, 120);
-}
-
-/* ─────────────────────────────────────────────
-   DIAGNOSTIC FACTS
-   Random sample from a range of levels.  Returns ~120 shuffled facts.
-───────────────────────────────────────────── */
-function buildDiagnosticFacts(startKey, endKey) {
-  const facts = getFactsInRange(startKey, endKey);
-  if (facts.length === 0) return [];
-
-  const expanded = [];
-  while (expanded.length < 120) {
-    expanded.push(...facts.map(f => ({
-      display: `${f[0]} × ${f[1]}`,
-      answer: factProduct(f),
-      fact: f,
-    })));
-  }
-  shuffle(expanded);
-  return expanded.slice(0, 120);
-}
-
-/* ─────────────────────────────────────────────
-   BASELINE FACTS
-   Random mix from ALL levels.  Returns ~240 shuffled facts (2-min test).
-───────────────────────────────────────────── */
-function buildBaselineFacts() {
-  const facts = getAllFacts();
-  const expanded = [];
-  while (expanded.length < 240) {
-    expanded.push(...facts.map(f => ({
-      display: `${f[0]} × ${f[1]}`,
-      answer: factProduct(f),
-      fact: f,
-    })));
-  }
-  shuffle(expanded);
-  return expanded.slice(0, 240);
-}
-
-/* ─────────────────────────────────────────────
-   BINARY SEARCH DIAGNOSTIC STATE MACHINE
-
-   State held by the caller (app.js); these are pure helper functions.
-   Returns: { nextStart, nextEnd, done, placementLevel }
-───────────────────────────────────────────── */
-
-/**
- * Given current diagnostic range and whether the student PASSED (>=40),
- * return the next range to test, or a placement level if search is done.
- *
- * @param {string}  startKey  e.g. 'A'
- * @param {string}  endKey    e.g. 'M'
- * @param {boolean} passed    student DCPM >= 40
- * @returns {{ done: boolean, placementLevel?: string, nextStart?: string, nextEnd?: string }}
- */
-function advanceDiagnostic(startKey, endKey, passed) {
-  const startIdx = LEVEL_ORDER.indexOf(startKey);
-  const endIdx   = LEVEL_ORDER.indexOf(endKey);
-
-  // Single level left → placement found
-  if (startIdx === endIdx) {
-    // If they passed this single level, they go to the next level above
-    // (they have no gap in this range).  If no next, place at startKey.
-    if (passed) {
-      const nextIdx = endIdx + 1;
-      if (nextIdx < LEVEL_ORDER.length) {
-        return { done: true, placementLevel: LEVEL_ORDER[nextIdx] };
-      }
-      // Passed everything — should not normally reach here (baseline catches high fluency)
-      return { done: true, placementLevel: LEVEL_ORDER[endIdx] };
-    } else {
-      return { done: true, placementLevel: startKey };
-    }
-  }
-
-  const midIdx = Math.floor((startIdx + endIdx) / 2);
-
-  if (!passed) {
-    // Gap in first half [start .. mid]
-    const newEnd = LEVEL_ORDER[midIdx];
-    return { done: false, nextStart: startKey, nextEnd: newEnd };
-  } else {
-    // Gap in second half [mid+1 .. end]
-    const newStart = LEVEL_ORDER[midIdx + 1];
-    return { done: false, nextStart: newStart, nextEnd: endKey };
-  }
+  const levelKeys = [...masteredLevelKeys, currentLevelKey];
+  return buildLevelWeightedFacts(levelKeys, 120);
 }

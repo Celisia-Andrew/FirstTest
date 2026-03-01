@@ -17,7 +17,7 @@
         <h1>Multiplication Fluency</h1>
         <p class="subtitle">Build speed and accuracy with multiplication facts.</p>
         <button id="btn-start" class="btn-primary">Start</button>
-        <!-- TODO: Replace with Google OAuth / Clever login button when auth is ready -->
+        <!-- TODO: AUTH — Replace with Google OAuth / Clever login button -->
       </div>
     </div>
 
@@ -28,7 +28,7 @@
       <div class="test-header">
         <span class="label">Baseline Test</span>
         <span id="baseline-timer" class="timer">2:00</span>
-        <span id="baseline-score" class="score">0 correct</span>
+        <span id="baseline-score" class="score">0 digits</span>
       </div>
       <div class="problem-area">
         <div id="baseline-problem" class="problem-display"></div>
@@ -55,13 +55,26 @@
     </div>
 
     <!-- ═══════════════════════════════════════════
-         SCREEN: Diagnostic (binary search, 1-min subtests)
+         SCREEN: Diagnostic Intro / Transition
+         Shown before each diagnostic subtest.
+    ════════════════════════════════════════════ -->
+    <div id="screen-diag-intro" class="screen">
+      <div class="center-card">
+        <h2>Good effort!</h2>
+        <p class="subtitle">Let's find your specific level.</p>
+        <p id="diag-intro-subtest" class="diag-subtest-label">Diagnostic Subtest 1</p>
+        <button id="btn-diag-start" class="btn-primary">Start</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: Diagnostic Subtest (1-min, binary search)
     ════════════════════════════════════════════ -->
     <div id="screen-diagnostic" class="screen">
       <div class="test-header">
-        <span class="label">Diagnostic</span>
+        <span id="diag-label" class="label">Diagnostic</span>
         <span id="diag-timer" class="timer">1:00</span>
-        <span id="diag-score" class="score">0 correct</span>
+        <span id="diag-score" class="score">0 digits</span>
       </div>
       <div class="problem-area">
         <div id="diag-problem" class="problem-display"></div>
@@ -89,26 +102,32 @@
                autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                placeholder="?" aria-label="Your answer" />
       </div>
-      <!-- Error correction panel (hidden by default) -->
+
+      <!-- Error Correction Panel — DI-style interactive rehearsal -->
       <div id="error-panel" class="error-panel hidden">
-        <p id="error-msg" class="error-msg"></p>
-        <input id="error-input" class="answer-input small" type="number" inputmode="numeric"
-               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-               placeholder="Type the correct answer" aria-label="Retype correct answer" />
+        <p id="error-header" class="error-header"></p>
+        <p class="error-sub">Type the correct product to continue.</p>
+        <div class="error-equation-row">
+          <span id="error-eq-display" class="error-eq-display"></span>
+          <input id="error-input" class="answer-input small" type="number" inputmode="numeric"
+                 autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                 placeholder="?" aria-label="Type the correct product" />
+        </div>
       </div>
+
       <div class="progress-wrap">
         <div id="practice-progress" class="progress-bar"></div>
       </div>
     </div>
 
     <!-- ═══════════════════════════════════════════
-         SCREEN: Mini Mastery Check (1-min for U1)
+         SCREEN: Mini Mastery Check (1-min for U1 or rule-based level)
     ════════════════════════════════════════════ -->
     <div id="screen-mastery-check" class="screen">
       <div class="test-header">
         <span id="mastery-check-label" class="label">Mastery Check</span>
         <span id="mastery-timer" class="timer">1:00</span>
-        <span id="mastery-score" class="score">0 correct</span>
+        <span id="mastery-score" class="score">0 digits</span>
       </div>
       <div class="problem-area">
         <div id="mastery-problem" class="problem-display"></div>
@@ -128,7 +147,7 @@
       <div class="test-header">
         <span id="level-test-label" class="label">Level Test</span>
         <span id="level-test-timer" class="timer">1:00</span>
-        <span id="level-test-score" class="score">0 correct</span>
+        <span id="level-test-score" class="score">0 digits</span>
       </div>
       <div class="problem-area">
         <div id="level-test-problem" class="problem-display"></div>
@@ -160,7 +179,7 @@
         <p id="level-complete-msg"></p>
         <p id="level-complete-dcpm" class="big-stat"></p>
         <button id="btn-level-continue" class="btn-primary">Continue</button>
-        <!-- TODO: Hook for Gamification – fire medal/award event here -->
+        <!-- TODO: Gamification hook — fire medal/award event here -->
       </div>
     </div>
 

@@ -1,7 +1,6 @@
 /* ═══════════════════════════════════════════════════════
    Multiplication Fluency — Styles
-   Design goals: High contrast, large type, zero distractions.
-   Dark mode default; pure black/white with accent green.
+   Dark mode; high contrast; zero distractions.
 ════════════════════════════════════════════════════════ */
 
 :root {
@@ -10,8 +9,8 @@
   --border:    #2a2a2a;
   --text:      #f0f0f0;
   --muted:     #888;
-  --accent:    #00e676;   /* bright green for answers / progress */
-  --accent2:   #40c4ff;   /* blue for secondary accents */
+  --accent:    #00e676;   /* green — answers / progress */
+  --accent2:   #40c4ff;   /* blue — timer */
   --danger:    #ff5252;
   --warn:      #ffd740;
   --font-mono: 'Courier New', Courier, monospace;
@@ -29,7 +28,7 @@ html, body {
   font-family: 'Segoe UI', Arial, sans-serif;
   font-size: 18px;
   line-height: 1.4;
-  overflow: hidden; /* single screen; no scroll flash */
+  overflow: hidden;
 }
 
 #app {
@@ -62,21 +61,22 @@ html, body {
   border-radius: var(--radius);
 }
 
-.center-card h1 {
-  font-size: 2.4rem;
-  margin-bottom: 12px;
-  letter-spacing: -0.5px;
-}
-
-.center-card h2 {
-  font-size: 2rem;
-  margin-bottom: 12px;
-}
+.center-card h1 { font-size: 2.4rem; margin-bottom: 12px; }
+.center-card h2 { font-size: 2rem;   margin-bottom: 12px; }
 
 .subtitle {
   color: var(--muted);
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   font-size: 1rem;
+}
+
+/* ── Diagnostic Intro ── */
+.diag-subtest-label {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent2);
+  letter-spacing: 0.5px;
+  margin-bottom: 24px;
 }
 
 /* ── Buttons ── */
@@ -92,8 +92,8 @@ html, body {
   margin-top: 16px;
   letter-spacing: 0.5px;
 }
-.btn-primary  { background: var(--accent);  color: #000; }
-.btn-secondary{ background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+.btn-primary   { background: var(--accent);  color: #000; }
+.btn-secondary { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
 .btn-primary:hover, .btn-secondary:hover { opacity: 0.85; }
 
 /* ── Test Header ── */
@@ -148,7 +148,7 @@ html, body {
 
 .problem-display {
   font-family: var(--font-mono);
-  font-size: 6rem;          /* minimum 48px; default much larger */
+  font-size: 6rem;
   font-weight: 700;
   color: var(--text);
   letter-spacing: 4px;
@@ -159,11 +159,7 @@ html, body {
   align-items: center;
   justify-content: center;
 }
-
-/* Color the "?" answer placeholder */
-.problem-display .answer-part {
-  color: var(--accent);
-}
+.problem-display .answer-part { color: var(--accent); }
 
 /* ── Answer Input ── */
 .answer-input {
@@ -179,32 +175,57 @@ html, body {
   padding: 12px 16px;
   outline: none;
   transition: border-color 0.15s;
-  /* Hide number spinners */
   -moz-appearance: textfield;
 }
 .answer-input::-webkit-outer-spin-button,
 .answer-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.answer-input:focus { border-color: var(--accent2); }
-.answer-input.small { font-size: 2rem; width: 160px; }
-.answer-input.correct { border-color: var(--accent); }
-.answer-input.wrong   { border-color: var(--danger); }
+.answer-input:focus   { border-color: var(--accent2); }
+.answer-input.correct { border-color: var(--accent);  }
+.answer-input.wrong   { border-color: var(--danger);  }
+.answer-input.small   { font-size: 2.2rem; width: 160px; }
 
-/* ── Error Panel ── */
+/* ── Error Correction Panel (DI-style) ── */
 .error-panel {
-  background: #1a0000;
+  background: #130000;
   border: 2px solid var(--danger);
   border-radius: var(--radius);
-  padding: 20px 28px;
+  padding: 22px 28px;
   text-align: center;
   width: 100%;
-  max-width: 480px;
-}
-.error-msg {
-  font-size: 1.2rem;
-  margin-bottom: 16px;
-  color: var(--warn);
+  max-width: 520px;
+  margin-top: 8px;
 }
 .error-panel.hidden { display: none; }
+
+.error-header {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--warn);
+  margin-bottom: 6px;
+  font-family: var(--font-mono);
+}
+
+.error-sub {
+  font-size: 0.95rem;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.error-equation-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.error-eq-display {
+  font-family: var(--font-mono);
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
 
 /* ── Progress Bar ── */
 .progress-wrap {
@@ -233,14 +254,12 @@ html, body {
   font-weight: 700;
 }
 
-/* ── Teacher note ── */
 .teacher-note {
   font-size: 1.1rem;
   color: var(--warn);
   margin: 8px 0 20px;
 }
 
-/* ── Message text ── */
 .message-text {
   font-size: 1.4rem;
   line-height: 1.6;
@@ -250,8 +269,10 @@ html, body {
 
 /* ── Responsive ── */
 @media (max-width: 480px) {
-  .problem-display { font-size: 4rem; min-height: 80px; }
+  .problem-display  { font-size: 4rem; min-height: 80px; }
   .answer-input     { font-size: 2.5rem; width: 180px; }
   .timer            { font-size: 1.5rem; }
   .center-card h1   { font-size: 1.8rem; }
+  .error-eq-display { font-size: 1.6rem; }
+  .answer-input.small { font-size: 1.6rem; width: 140px; }
 }

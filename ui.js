@@ -1,8 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════
-   ui.js — Screen management, rendering helpers, and timer logic.
+   ui.js — Screen management, rendering helpers, timer logic.
 
-   All DOM manipulation lives here.  app.js calls these functions and
-   provides callbacks; it never touches the DOM directly.
+   All DOM manipulation lives here.  app.js calls these and provides
+   callbacks; it never touches the DOM directly.
 ════════════════════════════════════════════════════════════════════════ */
 
 'use strict';
@@ -18,10 +18,9 @@ function showScreen(id) {
 
 /* ─────────────────────────────────────────────
    PROBLEM DISPLAY
-   Renders:  "a × b = ?"  with the "?" in accent color.
+   Renders: "a × b = ?" with the "?" in accent color.
 ───────────────────────────────────────────── */
 function renderProblem(containerEl, displayStr) {
-  // displayStr is like "3 × 4" — we append " = ?"
   containerEl.innerHTML = `${escapeHtml(displayStr)} = <span class="answer-part">?</span>`;
 }
 
@@ -34,17 +33,16 @@ function escapeHtml(str) {
 
 /* ─────────────────────────────────────────────
    COUNTDOWN TIMER
-   Returns a controller object { stop, reset }.
+   Returns { start, stop, getElapsed }.
 ───────────────────────────────────────────── */
 function createCountdownTimer(totalSeconds, timerEl, progressEl, onTick, onExpire) {
-  let remaining = totalSeconds;
   let intervalId = null;
-  let startTime = null;
-  let elapsed = 0;
+  let startTime  = null;
+  let elapsed    = 0;
 
   function tick() {
-    elapsed = (Date.now() - startTime) / 1000;
-    remaining = Math.max(0, totalSeconds - elapsed);
+    elapsed          = (Date.now() - startTime) / 1000;
+    const remaining  = Math.max(0, totalSeconds - elapsed);
 
     const mins = Math.floor(remaining / 60);
     const secs = Math.floor(remaining % 60);
@@ -53,8 +51,7 @@ function createCountdownTimer(totalSeconds, timerEl, progressEl, onTick, onExpir
     if (remaining <= 10) timerEl.classList.add('urgent');
 
     if (progressEl) {
-      const pct = ((totalSeconds - remaining) / totalSeconds) * 100;
-      progressEl.style.width = pct + '%';
+      progressEl.style.width = `${((totalSeconds - remaining) / totalSeconds) * 100}%`;
     }
 
     if (onTick) onTick(elapsed, remaining);
@@ -66,8 +63,8 @@ function createCountdownTimer(totalSeconds, timerEl, progressEl, onTick, onExpir
   }
 
   function start() {
-    startTime = Date.now();
-    intervalId = setInterval(tick, 100); // 100ms resolution for accuracy
+    startTime  = Date.now();
+    intervalId = setInterval(tick, 100);
   }
 
   function stop() {
@@ -82,7 +79,6 @@ function createCountdownTimer(totalSeconds, timerEl, progressEl, onTick, onExpir
 
 /* ─────────────────────────────────────────────
    FLASH FEEDBACK
-   Briefly flashes the input border green or red.
 ───────────────────────────────────────────── */
 function flashInput(inputEl, correct) {
   const cls = correct ? 'correct' : 'wrong';
@@ -98,16 +94,32 @@ function updateScoreDisplay(scoreEl, correctDigits) {
 }
 
 /* ─────────────────────────────────────────────
+   DIAGNOSTIC INTRO SCREEN  (#1)
+   Shows between baseline-fail and first subtest, and between subtests.
+
+   @param {number}   subtestNum  1-based subtest counter
+   @param {string}   rangeLabel  e.g. "Levels A–M"
+   @param {Function} onStart     Called when student clicks Start
+───────────────────────────────────────────── */
+function showDiagIntro(subtestNum, rangeLabel, onStart) {
+  document.getElementById('diag-intro-subtest').textContent =
+    `Diagnostic Subtest ${subtestNum}  ·  ${rangeLabel}`;
+  showScreen('screen-diag-intro');
+
+  const btn    = document.getElementById('btn-diag-start');
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+  newBtn.addEventListener('click', onStart, { once: true });
+}
+
+/* ─────────────────────────────────────────────
    MESSAGE SCREEN
-   Shows a text message with a "Continue" button.
-   onContinue: callback when button clicked.
 ───────────────────────────────────────────── */
 function showMessage(text, onContinue) {
   document.getElementById('message-text').textContent = text;
   showScreen('screen-message');
 
-  const btn = document.getElementById('btn-message-continue');
-  // Remove any lingering listener
+  const btn    = document.getElementById('btn-message-continue');
   const newBtn = btn.cloneNode(true);
   btn.parentNode.replaceChild(newBtn, btn);
   newBtn.addEventListener('click', onContinue, { once: true });
@@ -119,44 +131,17 @@ function showMessage(text, onContinue) {
 function showLevelComplete(title, msg, dcpm, onContinue) {
   document.getElementById('level-complete-title').textContent = title;
   document.getElementById('level-complete-msg').textContent   = msg;
-  document.getElementById('level-complete-dcpm').textContent  = dcpm >= 0 ? `${Math.round(dcpm)} DCPM` : '';
+  document.getElementById('level-complete-dcpm').textContent  =
+    dcpm >= 0 ? `${Math.round(dcpm)} DCPM` : '';
   showScreen('screen-level-complete');
 
-  const btn = document.getElementById('btn-level-continue');
+  const btn    = document.getElementById('btn-level-continue');
   const newBtn = btn.cloneNode(true);
   btn.parentNode.replaceChild(newBtn, btn);
   newBtn.addEventListener('click', onContinue, { once: true });
 
-  // TODO: Gamification hook — fire 'levelMastered' event for medals/awards UI
+  // TODO: Gamification hook — fire 'levelMastered' CustomEvent here
   // document.dispatchEvent(new CustomEvent('levelMastered', { detail: { dcpm } }));
-}
-
-/* ─────────────────────────────────────────────
-   FOCUS HELPER — always keep input focused
-───────────────────────────────────────────── */
-function focusInput(inputEl) {
-  if (inputEl) {
-    inputEl.value = '';
-    inputEl.focus({ preventScroll: true });
-  }
-}
-
-/* ─────────────────────────────────────────────
-   ERROR CORRECTION PANEL
-───────────────────────────────────────────── */
-function showErrorPanel(correctDisplay, correctAnswer) {
-  const panel = document.getElementById('error-panel');
-  const msg   = document.getElementById('error-msg');
-  msg.innerHTML = `Correct answer: <strong>${escapeHtml(correctDisplay)} = ${correctAnswer}</strong><br>
-                   Type <strong>${correctAnswer}</strong> to continue.`;
-  panel.classList.remove('hidden');
-  const input = document.getElementById('error-input');
-  input.value = '';
-  input.focus({ preventScroll: true });
-}
-
-function hideErrorPanel() {
-  document.getElementById('error-panel').classList.add('hidden');
 }
 
 /* ─────────────────────────────────────────────
@@ -166,8 +151,50 @@ function showHighFluency(dcpm, onRetake) {
   document.getElementById('high-fluency-dcpm').textContent = `${Math.round(dcpm)} DCPM`;
   showScreen('screen-high-fluency');
 
-  const btn = document.getElementById('btn-retake');
+  const btn    = document.getElementById('btn-retake');
   const newBtn = btn.cloneNode(true);
   btn.parentNode.replaceChild(newBtn, btn);
   newBtn.addEventListener('click', onRetake, { once: true });
+}
+
+/* ─────────────────────────────────────────────
+   FOCUS HELPER
+───────────────────────────────────────────── */
+function focusInput(inputEl) {
+  if (inputEl) {
+    inputEl.value = '';
+    inputEl.focus({ preventScroll: true });
+  }
+}
+
+/* ─────────────────────────────────────────────
+   ERROR CORRECTION PANEL  (#3 — DI Interactive Rehearsal)
+
+   Shows:
+     Header:  "Correct fact: A × B = P"
+     Sub:     "Type the correct product to continue."
+     Row:     "A × B = [input]"
+
+   The practice-input is hidden while error panel is visible so the
+   student focuses on the correction field.
+───────────────────────────────────────────── */
+function showErrorPanel(a, b, product) {
+  document.getElementById('error-header').textContent =
+    `Correct fact: ${a} × ${b} = ${product}`;
+  document.getElementById('error-eq-display').textContent =
+    `${a} × ${b} = `;
+
+  document.getElementById('practice-input').style.display = 'none';
+
+  const panel = document.getElementById('error-panel');
+  panel.classList.remove('hidden');
+
+  const input = document.getElementById('error-input');
+  input.value = '';
+  input.focus({ preventScroll: true });
+}
+
+function hideErrorPanel() {
+  document.getElementById('error-panel').classList.add('hidden');
+  document.getElementById('practice-input').style.display = '';
 }
