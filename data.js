@@ -265,3 +265,66 @@ function endSession(data) {
     saveStudentData(data);
   }
 }
+
+/* ─────────────────────────────────────────────
+   SEGMENTED BASELINE  (#3)
+   3-minute test split into four 45-second segments.
+   Each segment covers a range of levels.
+   Placement = first level of the first failing segment.
+───────────────────────────────────────────── */
+const BASELINE_SEGMENTS = [
+  { id: 0, label: 'A–G', levels: ['A','B','C','D','E','F','G'], startLevel: 'A' },
+  { id: 1, label: 'H–N', levels: ['H','I','J','K','L','M','N'], startLevel: 'H' },
+  { id: 2, label: 'O–U', levels: ['O','P','Q','R','S','T','U'], startLevel: 'O' },
+  { id: 3, label: 'V–Z', levels: ['V','W','X','Y','Z'],         startLevel: 'V' },
+];
+const BASELINE_SEGMENT_SEC  = 45;   // seconds per segment
+const BASELINE_TOTAL_SEC    = 180;  // 3 minutes total
+
+/**
+ * Build a shuffle-and-deplete fact deck from the given level keys.
+ * All unique facts from those levels, shuffled.
+ */
+function buildSegmentDeck(levelKeys) {
+  const facts = [];
+  for (const lk of levelKeys) {
+    for (const f of LEVEL_MAP[lk].facts) {
+      facts.push({ display: `${f[0]} × ${f[1]}`, answer: factProduct(f), fact: f });
+    }
+  }
+  return shuffle(facts);
+}
+
+/* ─────────────────────────────────────────────
+   PRAISE BANK  (#8)
+───────────────────────────────────────────── */
+const PRAISE_BANK = [
+  'Congratulations!',
+  'Brilliant!',
+  'Level up!',
+  'Very cool!',
+  "Let's go!",
+  'Great job!',
+  'Way to go!',
+  'Outstanding!',
+  'Boom!',
+  'Incredible!',
+  'You crushed it!',
+  'Mission accomplished!',
+  'Unstoppable!',
+  'You should feel proud.',
+  'Your hard work is paying off.',
+  'Your hard work matters.',
+  "You've proven that you CAN do it!",
+  'This skill is making you even better at math!',
+];
+
+let _lastPraise = '';
+
+/** Returns a random praise string, never repeating the same one twice in a row. */
+function getRandomPraise() {
+  const candidates = PRAISE_BANK.filter(p => p !== _lastPraise);
+  const p = candidates[Math.floor(Math.random() * candidates.length)];
+  _lastPraise = p;
+  return p;
+}

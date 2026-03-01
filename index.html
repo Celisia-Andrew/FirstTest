@@ -10,6 +10,14 @@
   <div id="app">
 
     <!-- ═══════════════════════════════════════════
+         OVERLAY: Snap-zoom Countdown (3-2-1-GO!)
+         Fixed position above all screens, hidden by default.
+    ════════════════════════════════════════════ -->
+    <div id="countdown-overlay" class="countdown-overlay hidden">
+      <div id="countdown-number" class="countdown-number"></div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
          SCREEN: Welcome / Start
     ════════════════════════════════════════════ -->
     <div id="screen-welcome" class="screen active">
@@ -22,13 +30,13 @@
     </div>
 
     <!-- ═══════════════════════════════════════════
-         SCREEN: Baseline Assessment (2-minute test)
+         SCREEN: Baseline Assessment (3-minute, 4×45s segments)
     ════════════════════════════════════════════ -->
     <div id="screen-baseline" class="screen">
       <div class="test-header">
-        <span class="label">Baseline Test</span>
-        <span id="baseline-timer" class="timer">2:00</span>
-        <span id="baseline-score" class="score">0 digits</span>
+        <span id="baseline-section-label" class="label">Section 1 / 4</span>
+        <span id="baseline-timer" class="timer">3:00</span>
+        <span class="score"></span>
       </div>
       <div class="problem-area">
         <div id="baseline-problem" class="problem-display"></div>
@@ -51,39 +59,6 @@
         <p class="big-stat" id="high-fluency-dcpm"></p>
         <p class="teacher-note">Show this screen to your teacher.</p>
         <button id="btn-retake" class="btn-secondary">Retake initial test</button>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════
-         SCREEN: Diagnostic Intro / Transition
-         Shown before each diagnostic subtest.
-    ════════════════════════════════════════════ -->
-    <div id="screen-diag-intro" class="screen">
-      <div class="center-card">
-        <h2>Good effort!</h2>
-        <p class="subtitle">Let's find your specific level.</p>
-        <p id="diag-intro-subtest" class="diag-subtest-label">Diagnostic Subtest 1</p>
-        <button id="btn-diag-start" class="btn-primary">Start</button>
-      </div>
-    </div>
-
-    <!-- ═══════════════════════════════════════════
-         SCREEN: Diagnostic Subtest (1-min, binary search)
-    ════════════════════════════════════════════ -->
-    <div id="screen-diagnostic" class="screen">
-      <div class="test-header">
-        <span id="diag-label" class="label">Diagnostic</span>
-        <span id="diag-timer" class="timer">1:00</span>
-        <span id="diag-score" class="score">0 digits</span>
-      </div>
-      <div class="problem-area">
-        <div id="diag-problem" class="problem-display"></div>
-        <input id="diag-input" class="answer-input" type="number" inputmode="numeric"
-               autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-               placeholder="?" aria-label="Your answer" />
-      </div>
-      <div class="progress-wrap">
-        <div id="diag-progress" class="progress-bar"></div>
       </div>
     </div>
 
@@ -121,13 +96,39 @@
     </div>
 
     <!-- ═══════════════════════════════════════════
+         SCREEN: Fact Progress (shown after each fact mastered within a level)
+    ════════════════════════════════════════════ -->
+    <div id="screen-fact-progress" class="screen">
+      <div class="center-card">
+        <h2 id="fact-progress-level-title">Level B Progress</h2>
+        <div id="fact-progress-bar" class="level-seg-bar"></div>
+        <p id="fact-progress-next" class="fact-progress-next"></p>
+        <p id="fact-progress-praise" class="praise-text"></p>
+        <button id="btn-fact-progress-start" class="btn-primary">Start Practice</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
+         SCREEN: New Level Welcome (shown after level test pass)
+    ════════════════════════════════════════════ -->
+    <div id="screen-new-level" class="screen">
+      <div class="center-card">
+        <p id="new-level-praise" class="praise-text"></p>
+        <div id="new-level-letter" class="new-level-letter"></div>
+        <p id="new-level-next" class="fact-progress-next"></p>
+        <p class="subtitle">Work hard and have fun!</p>
+        <button id="btn-new-level-proceed" class="btn-primary">Let's Go!</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════
          SCREEN: Mini Mastery Check (1-min for U1 or rule-based level)
     ════════════════════════════════════════════ -->
     <div id="screen-mastery-check" class="screen">
       <div class="test-header">
         <span id="mastery-check-label" class="label">Mastery Check</span>
         <span id="mastery-timer" class="timer">1:00</span>
-        <span id="mastery-score" class="score">0 digits</span>
+        <span class="score"></span>
       </div>
       <div class="problem-area">
         <div id="mastery-problem" class="problem-display"></div>
@@ -147,7 +148,7 @@
       <div class="test-header">
         <span id="level-test-label" class="label">Level Test</span>
         <span id="level-test-timer" class="timer">1:00</span>
-        <span id="level-test-score" class="score">0 digits</span>
+        <span class="score"></span>
       </div>
       <div class="problem-area">
         <div id="level-test-problem" class="problem-display"></div>

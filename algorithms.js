@@ -46,60 +46,19 @@ function buildLevelWeightedFacts(levelKeys, count) {
 }
 
 /* ─────────────────────────────────────────────
-   BASELINE FACTS  (2-minute test, all levels A-Z)
-───────────────────────────────────────────── */
-function buildBaselineFacts() {
-  return buildLevelWeightedFacts(LEVEL_ORDER, 240);
-}
-
-/* ─────────────────────────────────────────────
-   DIAGNOSTIC FACTS  (1-minute subtest, level range)
-───────────────────────────────────────────── */
-function buildDiagnosticFacts(startKey, endKey) {
-  // Collect all level keys in [startKey, endKey]
-  const keys = [];
-  let inRange = false;
-  for (const lk of LEVEL_ORDER) {
-    if (lk === startKey) inRange = true;
-    if (inRange) keys.push(lk);
-    if (lk === endKey) break;
-  }
-  if (keys.length === 0) return [];
-  return buildLevelWeightedFacts(keys, 120);
-}
-
-/* ─────────────────────────────────────────────
-   HIERARCHICAL FACT PARTITIONING  (for Session Bank selection)
-
-   Given an unknown [a, b] and a pool of mastered facts, split pool into:
-     tier1 — shares BOTH factors with unknown
-     tier2 — shares exactly ONE factor
-     tier3 — shares no factors
-───────────────────────────────────────────── */
-function partitionKnownsByTier(unknown, knownFacts) {
-  const [ua, ub] = unknown;
-  const tier1 = [], tier2 = [], tier3 = [];
-
-  for (const fact of knownFacts) {
-    const [a, b] = fact;
-    const shared = ((a === ua || a === ub) ? 1 : 0)
-                 + ((b === ua || b === ub) ? 1 : 0);
-    if      (shared === 2) tier1.push(fact);
-    else if (shared === 1) tier2.push(fact);
-    else                   tier3.push(fact);
-  }
-  return { tier1, tier2, tier3 };
-}
-
-/* ─────────────────────────────────────────────
-   SESSION BANK BUILDER  (#5 — Hierarchical selection)
+   SESSION BANK BUILDER  (#1 — 4-Tier Hierarchical Selection)
 
    Selects exactly 9 (or fewer if pool is small) known cards for a U1 cycle.
-   Priority: Tier1 → Tier2 → Tier3 (random within each tier).
+
+   Tier priority (strictly ordered, no overlap):
+     T1 — Commutative match: fact[0]===U1[1] && fact[1]===U1[0]
+     T2 — First-factor anchor: fact[0]===U1[0]  (not already in T1)
+     T3 — Remaining shared: fact[0]===U1[1] || fact[1]===U1[1] || fact[1]===U1[0]
+     T4 — No shared factors: all others
 
    Special cases:
-   - Level A unknowns: no prior multiplication facts → use 9 addition/subtraction facts.
-   - Level F unknowns: mastered pool is A-E; partition uses [0, n] representative.
+   - Level A unknowns: no prior multiplication facts → use addition/subtraction facts.
+   - Level F unknowns: pool is A-E mastered facts.
 
    @param {[number,number]} unknown    The target fact [a, b]
    @param {[number,number][]} knownPool  All mastered mult facts as [a,b] pairs
@@ -119,28 +78,45 @@ function buildSessionBank(unknown, knownPool, levelKey) {
     }));
   }
 
-  // All other levels: hierarchical selection from knownPool
+  // All other levels: 4-tier hierarchical selection from knownPool
   if (knownPool.length === 0) {
-    // Edge case: somehow empty pool (should not happen past Level A)
     return LEVEL_A_ADDITION_KNOWNS.slice(0, TARGET).map(k => ({
       display: k.display, answer: k.answer, isUnknown: false, fact: null,
     }));
   }
 
-  const { tier1, tier2, tier3 } = partitionKnownsByTier(unknown, knownPool);
-  const selected = [];
+  const [ua, ub] = unknown;
+  const tier1 = [], tier2 = [], tier3 = [], tier4 = [];
 
-  const t1 = sample(tier1, Math.min(tier1.length, TARGET));
-  selected.push(...t1);
-
-  if (selected.length < TARGET) {
-    const t2 = sample(tier2, Math.min(tier2.length, TARGET - selected.length));
-    selected.push(...t2);
+  for (const fact of knownPool) {
+    const [a, b] = fact;
+    if (a === ub && b === ua) {
+      // T1: commutative match (both factors swapped)
+      tier1.push(fact);
+    } else if (a === ua) {
+      // T2: first-factor anchor
+      tier2.push(fact);
+    } else if (a === ub || b === ub || b === ua) {
+      // T3: any remaining shared factor
+      tier3.push(fact);
+    } else {
+      // T4: no shared factors
+      tier4.push(fact);
+    }
   }
 
-  if (selected.length < TARGET) {
-    const t3 = sample(tier3, Math.min(tier3.length, TARGET - selected.length));
-    selected.push(...t3);
+  console.log(
+    `Target: [${ua}×${ub}], ` +
+    `Tier1: ${tier1.length}, Tier2: ${tier2.length}, ` +
+    `Tier3: ${tier3.length}, Tier4: ${tier4.length}, ` +
+    `Total pool: ${knownPool.length}`
+  );
+
+  const selected = [];
+  for (const tier of [tier1, tier2, tier3, tier4]) {
+    if (selected.length >= TARGET) break;
+    const picks = sample(tier, Math.min(tier.length, TARGET - selected.length));
+    selected.push(...picks);
   }
 
   return selected.map(fact => ({
@@ -152,25 +128,21 @@ function buildSessionBank(unknown, knownPool, levelKey) {
 }
 
 /* ─────────────────────────────────────────────
-   IR SEQUENCE GENERATOR  (#4 & #5 — Shuffled Folding-In)
+   IR SEQUENCE GENERATOR  (#1 — 55-card Shuffled Folding-In)
 
-   Produces the full 10-step (U + up to 9 Knowns) flat sequence.
-   Total cards = 1 + 2 + 3 + … + (n+1) where n = sessionBank.length (≤9).
+   Always produces exactly 10 steps = 1+2+3+…+10 = 55 total cards.
+   Step 0: [U]
+   Step 1: [U, K×1]
+   Step 2: [U, K×2]
+   …
+   Step 9: [U, K×9]
 
-   Structure:
-     Step 1:  [U]
-     Step 2:  [U, K(random)]
-     Step 3:  [U, K(rand), K(rand, unique-per-step)]
-     ...
-     Step 10: [U, K×9 unique random draws from bank]
-
-   The bank is fixed for the entire U1 cycle.  The K SLOTS within each
-   step are re-randomised every time this function is called (so restarts
-   after an error produce a fresh shuffle from the same bank).
+   No-back-to-back repeats for Known cards (U1 may appear consecutively
+   as it leads every step).
 
    @param {[number,number]} unknown      Target fact [a,b]
-   @param {Array}           sessionBank  9-fact bank returned by buildSessionBank()
-   @returns {Array<{display, answer, isUnknown, fact}>}
+   @param {Array}           sessionBank  Up to 9-fact bank from buildSessionBank()
+   @returns {Array<{display, answer, isUnknown, fact}>}  55 cards
 ───────────────────────────────────────────── */
 function generateIRSequence(unknown, sessionBank) {
   const unknownCard = {
@@ -180,22 +152,40 @@ function generateIRSequence(unknown, sessionBank) {
     fact:      unknown,
   };
 
+  // Pad bank to 9 entries if smaller (repeat from bank cyclically)
+  const bank = sessionBank.slice();
+  while (bank.length < 9 && bank.length > 0) {
+    bank.push(...sessionBank.slice(0, 9 - bank.length));
+  }
+
   const sequence = [];
 
-  // Step 1: just [U]
-  sequence.push({ ...unknownCard });
-
-  // Steps 2 … (bankSize + 1): [U, K×i]
-  for (let i = 1; i <= sessionBank.length; i++) {
+  for (let i = 0; i < 10; i++) {
+    // Lead each step with U1
     sequence.push({ ...unknownCard });
-    // Pick i unique random knowns from the bank for THIS step
-    const picked = sample(sessionBank, i);
-    for (const k of picked) {
-      sequence.push({ ...k });
+
+    if (i === 0) continue; // Step 0 is just [U]
+
+    // Pick i unique Knowns from bank, then apply no-back-to-back guard
+    const picked = sample(bank, Math.min(i, bank.length));
+
+    // No-back-to-back guard: the card just pushed is U1 (isUnknown=true),
+    // so we only need to guard between consecutive Knowns in picked.
+    for (let k = 0; k < picked.length; k++) {
+      if (k > 0 && picked[k].display === picked[k - 1].display) {
+        // Swap with a later card to break the repeat
+        for (let j = k + 1; j < picked.length; j++) {
+          if (picked[j].display !== picked[k - 1].display) {
+            [picked[k], picked[j]] = [picked[j], picked[k]];
+            break;
+          }
+        }
+      }
+      sequence.push({ ...picked[k] });
     }
   }
 
-  return sequence;
+  return sequence; // exactly 55 cards (10 + 9×5 = no; 1+2+…+10 = 55)
 }
 
 /* ─────────────────────────────────────────────
@@ -211,7 +201,7 @@ function generateIRSequence(unknown, sessionBank) {
    @returns {Array<{display, answer, isUnknown, fact}>}
 ───────────────────────────────────────────── */
 function generateRuleBasedIRSequence(levelKey, sessionBank) {
-  const levelFacts  = LEVEL_MAP[levelKey].facts;
+  const levelFacts   = LEVEL_MAP[levelKey].facts;
   const rotatingPool = shuffle(levelFacts.slice());  // random rotation order
   let   poolIdx      = 0;
 
@@ -221,17 +211,29 @@ function generateRuleBasedIRSequence(levelKey, sessionBank) {
     return { display: `${f[0]} × ${f[1]}`, answer: factProduct(f), isUnknown: true, fact: f };
   }
 
+  // Pad bank to 9 if needed
+  const bank = sessionBank.slice();
+  while (bank.length < 9 && bank.length > 0) {
+    bank.push(...sessionBank.slice(0, 9 - bank.length));
+  }
+
   const sequence = [];
 
-  // Step 1
-  sequence.push(nextUnknownCard());
-
-  // Steps 2 … (bankSize + 1)
-  for (let i = 1; i <= sessionBank.length; i++) {
+  for (let i = 0; i < 10; i++) {
     sequence.push(nextUnknownCard());
-    const picked = sample(sessionBank, i);
-    for (const k of picked) {
-      sequence.push({ ...k });
+    if (i === 0) continue;
+
+    const picked = sample(bank, Math.min(i, bank.length));
+    for (let k = 0; k < picked.length; k++) {
+      if (k > 0 && picked[k].display === picked[k - 1].display) {
+        for (let j = k + 1; j < picked.length; j++) {
+          if (picked[j].display !== picked[k - 1].display) {
+            [picked[k], picked[j]] = [picked[j], picked[k]];
+            break;
+          }
+        }
+      }
+      sequence.push({ ...picked[k] });
     }
   }
 
@@ -239,31 +241,93 @@ function generateRuleBasedIRSequence(levelKey, sessionBank) {
 }
 
 /* ─────────────────────────────────────────────
-   MASTERY CHECK SEQUENCE  (1-minute, individual fact)
+   MASTERY CHECK SEQUENCE  (#4 — 80/20 maintenance distribution)
 
-   U1 appears at random intervals of 5–10 problems.
-   Filler facts are purely random from allMasteredFacts.
-   If no mastered facts exist yet, U1 fills all slots.
+   Structure (120 slots):
+     Position 0:  mandatory U1
+     Position 9:  mandatory U1
+     Every 5th non-U1 slot: draw from Recent Pool (U1 + last 3 mastered)
+     All other non-U1 slots: draw from General Pool (remaining mastered)
+
+   Recent Pool  = {U1} ∪ {last 3 mastered facts} (excluding U1)
+   General Pool = all mastered facts not in Recent Pool
+   Fallback: if General Pool < 10, collapse to single pool.
+
+   U1 appears at mandatory positions plus random intervals of 5–10 problems.
 ───────────────────────────────────────────── */
 function buildMasteryCheckSequence(unknown, allMasteredFacts) {
   const MAX_PROBLEMS = 120;
   const sequence     = [];
-  let nextUnknownAt  = 5 + Math.floor(Math.random() * 6);
 
   const unknownDisplay = `${unknown[0]} × ${unknown[1]}`;
   const unknownAnswer  = factProduct(unknown);
+  const unknownKey     = factKey(unknown);
+
+  const unknownCard = {
+    display: unknownDisplay, answer: unknownAnswer, isUnknown: true, fact: unknown,
+  };
+
+  // Build Recent Pool: U1 + last 3 mastered (excluding U1 itself)
+  const masteredExcluding = allMasteredFacts.filter(f => {
+    const arr = Array.isArray(f) ? f : parseFactKey(f);
+    return factKey(arr) !== unknownKey;
+  });
+  const last3 = masteredExcluding.slice(-3);
+  const recentKeys = new Set(last3.map(f => {
+    const arr = Array.isArray(f) ? f : parseFactKey(f);
+    return factKey(arr);
+  }));
+
+  const generalPool = masteredExcluding.filter(f => {
+    const arr = Array.isArray(f) ? f : parseFactKey(f);
+    return !recentKeys.has(factKey(arr));
+  });
+  const recentPool  = last3; // already arrays from masteredExcluding
+
+  const useCollapsed = generalPool.length < 10;
+
+  function pickRecent() {
+    if (recentPool.length === 0) return null;
+    const f = recentPool[Math.floor(Math.random() * recentPool.length)];
+    const arr = Array.isArray(f) ? f : parseFactKey(f);
+    return { display: `${arr[0]} × ${arr[1]}`, answer: factProduct(arr), isUnknown: false, fact: arr };
+  }
+
+  function pickGeneral() {
+    const pool = useCollapsed ? masteredExcluding : generalPool;
+    if (pool.length === 0) return null;
+    const f = pool[Math.floor(Math.random() * pool.length)];
+    const arr = Array.isArray(f) ? f : parseFactKey(f);
+    return { display: `${arr[0]} × ${arr[1]}`, answer: factProduct(arr), isUnknown: false, fact: arr };
+  }
+
+  let nextUnknownAt = 5 + Math.floor(Math.random() * 6);
+  let recentCounter = 0; // counts non-U1 slots; every 5th uses Recent
 
   for (let i = 0; i < MAX_PROBLEMS; i++) {
-    if (i === nextUnknownAt) {
-      sequence.push({ display: unknownDisplay, answer: unknownAnswer, isUnknown: true, fact: unknown });
-      nextUnknownAt = i + 5 + Math.floor(Math.random() * 6);
-    } else if (allMasteredFacts.length > 0) {
-      const f      = allMasteredFacts[Math.floor(Math.random() * allMasteredFacts.length)];
-      const parsed = Array.isArray(f) ? f : parseFactKey(f);
-      sequence.push({ display: `${parsed[0]} × ${parsed[1]}`, answer: factProduct(parsed), isUnknown: false, fact: parsed });
+    // Mandatory U1 at positions 0 and 9
+    if (i === 0 || i === 9 || i === nextUnknownAt) {
+      sequence.push({ ...unknownCard });
+      if (i === nextUnknownAt) {
+        nextUnknownAt = i + 5 + Math.floor(Math.random() * 6);
+      }
+      continue;
+    }
+
+    // Non-U1 slot: 80/20 distribution
+    recentCounter++;
+    let card = null;
+    if (recentCounter % 5 === 0) {
+      card = pickRecent();
+    }
+    if (!card) {
+      card = pickGeneral();
+    }
+    if (!card) {
+      // No mastered facts at all → repeat unknown
+      sequence.push({ ...unknownCard });
     } else {
-      // No mastered facts yet → repeat unknown
-      sequence.push({ display: unknownDisplay, answer: unknownAnswer, isUnknown: true, fact: unknown });
+      sequence.push(card);
     }
   }
 

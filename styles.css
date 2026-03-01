@@ -13,6 +13,7 @@
   --accent2:   #40c4ff;   /* blue — timer */
   --danger:    #ff5252;
   --warn:      #ffd740;
+  --cyber:     #39FF14;   /* neon green — next-fact previews, GO! */
   --font-mono: 'Courier New', Courier, monospace;
   --radius:    8px;
   --timer-size: 2rem;
@@ -68,15 +69,6 @@ html, body {
   color: var(--muted);
   margin-bottom: 20px;
   font-size: 1rem;
-}
-
-/* ── Diagnostic Intro ── */
-.diag-subtest-label {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--accent2);
-  letter-spacing: 0.5px;
-  margin-bottom: 24px;
 }
 
 /* ── Buttons ── */
@@ -144,6 +136,7 @@ html, body {
   gap: 32px;
   width: 100%;
   max-width: 680px;
+  position: relative;
 }
 
 .problem-display {
@@ -160,6 +153,15 @@ html, body {
   justify-content: center;
 }
 .problem-display .answer-part { color: var(--accent); }
+
+/* Fade-in animation for new facts */
+@keyframes factFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.problem-display.fact-fade {
+  animation: factFadeIn 0.1s ease-out forwards;
+}
 
 /* ── Answer Input ── */
 .answer-input {
@@ -183,6 +185,23 @@ html, body {
 .answer-input.correct { border-color: var(--accent);  }
 .answer-input.wrong   { border-color: var(--danger);  }
 .answer-input.small   { font-size: 2.2rem; width: 160px; }
+
+/* ── Answer Echo (floating ghost) ── */
+@keyframes echoFloat {
+  0%   { opacity: 1;   transform: translateY(0) scale(1); }
+  100% { opacity: 0;   transform: translateY(-28px) scale(0.85); }
+}
+.answer-echo {
+  position: fixed;
+  font-family: var(--font-mono);
+  font-size: 2rem;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 500;
+  animation: echoFloat 0.45s ease-out forwards;
+}
+.answer-echo.correct { color: var(--accent); }
+.answer-echo.wrong   { color: var(--danger); }
 
 /* ── Error Correction Panel (DI-style) ── */
 .error-panel {
@@ -245,6 +264,60 @@ html, body {
   transition: width 0.3s ease;
 }
 
+/* ── Segmented Level Progress Bar ── */
+.level-seg-bar {
+  display: flex;
+  gap: 4px;
+  margin: 16px 0 20px;
+  width: 100%;
+}
+.level-seg {
+  flex: 1;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--border);
+  transition: background 0.3s;
+}
+.level-seg.completed { background: var(--cyber); }
+.level-seg.current {
+  background: var(--accent2);
+  animation: segPulse 1s ease-in-out infinite alternate;
+}
+@keyframes segPulse {
+  from { opacity: 0.6; }
+  to   { opacity: 1; }
+}
+
+/* ── Fact Progress / New Level screens ── */
+.fact-progress-next {
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.fact-progress-next strong {
+  color: var(--cyber);
+  font-size: 1.3rem;
+}
+
+.praise-text {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 12px 0;
+  line-height: 1.3;
+}
+
+.new-level-letter {
+  font-family: var(--font-mono);
+  font-size: 6rem;
+  font-weight: 700;
+  color: var(--cyber);
+  line-height: 1;
+  margin: 12px 0;
+  text-shadow: 0 0 20px var(--cyber);
+}
+
 /* ── Big stat (DCPM display) ── */
 .big-stat {
   font-family: var(--font-mono);
@@ -267,6 +340,40 @@ html, body {
   color: var(--text);
 }
 
+/* ── Countdown Overlay ── */
+.countdown-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.88);
+}
+.countdown-overlay.hidden { display: none; }
+
+@keyframes countdownSlam {
+  0%   { transform: scale(3);   opacity: 0; }
+  35%  { transform: scale(1);   opacity: 1; }
+  80%  { transform: scale(1);   opacity: 1; }
+  100% { transform: scale(0.8); opacity: 0; }
+}
+@keyframes goSlam {
+  0%   { transform: scale(3);   opacity: 0; }
+  30%  { transform: scale(1.2); opacity: 1; }
+  70%  { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1.2); opacity: 0; }
+}
+
+.countdown-number {
+  font-family: var(--font-mono);
+  font-size: 12rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  will-change: transform, opacity;
+}
+
 /* ── Responsive ── */
 @media (max-width: 480px) {
   .problem-display  { font-size: 4rem; min-height: 80px; }
@@ -275,4 +382,6 @@ html, body {
   .center-card h1   { font-size: 1.8rem; }
   .error-eq-display { font-size: 1.6rem; }
   .answer-input.small { font-size: 1.6rem; width: 140px; }
+  .countdown-number { font-size: 7rem; }
+  .new-level-letter { font-size: 4rem; }
 }

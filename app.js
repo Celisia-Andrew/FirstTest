@@ -2,19 +2,22 @@
    app.js — Main application controller.
 
    Flow:
-     Welcome → Baseline (2 min) → High Fluency | Diag Intro → Diagnostic subtests
-     → Placement → Practice (IR) → Mastery Check → Level Test → next level
+     Welcome → Baseline (3 min, 4×45s segments) → High Fluency | Placement
+     → Practice (IR) → Mastery Check → Fact Progress → Level Test
+     → New Level Welcome → next level
 
    Updates implemented:
-     #1  Diagnostic transition screen + proper binary search state machine
-     #2  Level-weighted sampling; rule-based IR for Levels A & F
-     #3  DI-style error correction (interactive, auto-advance, no DCPM cost)
-     #4  Shuffled Folding-In (fixed Session Bank, randomised K slots per step)
-     #5  Full 10-step IR sequence (U + K1…K9); hierarchical bank selection
-     #6  Accuracy guardrail on Mastery Checks (stop on wrong, 4-attempt limit)
+     #1  4-tier IR hierarchy + 55-card hard-coded sequence
+     #2  No-back-to-back repeats for Known cards
+     #3  3-minute segmented baseline (replaces binary-search diagnostic)
+     #4  80/20 mastery check maintenance distribution
+     #5  Remove digits counter from timed screens
+     #6  Visual echo feedback on auto-submit
+     #7  Snap-zoom 3-2-1-GO! countdown before tests
+     #8  Randomized praise bank (no consecutive repeats)
+     #9  Fact Progress + New Level Welcome transition screens
 
    TODO: AUTH — Replace bootstrap block with Google OAuth / Clever callback.
-         All game logic is isolated from identity; search "TODO: AUTH".
    TODO: Teacher Dashboard — studentData shape is stable; see data.js.
    TODO: Gamification — search "TODO: Gamification" for hook locations.
 ════════════════════════════════════════════════════════════════════════ */
@@ -27,40 +30,42 @@
 
 let studentData = null;
 
-// Generic timed-test session (baseline / diagnostic / mastery-check / level-test)
+// Generic timed-test session (baseline / mastery-check / level-test)
 const session = {
-  facts:         [],   // problem card array for current test
-  index:         0,    // current card position
-  correctDigits: 0,    // running total (only for timed pass/fail scoring)
-  timer:         null, // countdown controller
+  facts:         [],
+  index:         0,
+  correctDigits: 0,
+  timer:         null,
 };
 
-/* ── Diagnostic binary-search state ── */
-const diagState = {
-  searchLow:  'A',   // lower bound of remaining search space
-  searchHigh: 'Z',   // upper bound
-  round:      0,     // 1-based subtest counter (for UI label)
-  lastTestEnd: null, // testEnd from the most recent subtest
+/* ── Segmented Baseline state  (#3) ── */
+const baselineState = {
+  segIndex:       0,    // current segment index (0–3)
+  segDcpmResults: [],   // DCPM per completed segment
+  segStartDigits: 0,    // correctDigits at start of current segment
+  segStartTime:   0,    // elapsed seconds at start of current segment
+  decks:          [],   // 4 shuffled fact decks, one per segment
+  deckIdx:        0,    // index into current deck
 };
 
 /* ── IR practice state ── */
 const irState = {
   levelKey:          '',
-  factIndex:         0,     // index into LEVEL_MAP[levelKey].facts (non-rule-based)
-  isRuleBased:       false, // true for Level A and F
-  sessionBank:       [],    // 9-fact bank fixed for the current U1 cycle
-  sequence:          [],    // pre-generated IR cards for current cycle
+  factIndex:         0,
+  isRuleBased:       false,
+  sessionBank:       [],
+  sequence:          [],
   seqIndex:          0,
   inErrorCorrection: false,
   errorExpectedAnswer: null,
-  errorFactA:        null,  // for building error panel display
+  errorFactA:        null,
   errorFactB:        null,
 };
 
 /* ── Individual-fact mastery check state ── */
 const masteryState = {
-  attempts:    0,    // wrong-answer stops this session (reset on fresh IR entry)
-  unknown:     null, // [a,b] for regular facts; null for rule-based
+  attempts:    0,
+  unknown:     null,
   isRuleBased: false,
   levelKey:    '',
 };
@@ -86,217 +91,159 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ═══════════════════════════════════════════════════════
-   BASELINE TEST  (2-minute, level-weighted across A-Z)
+   BASELINE TEST  (#3 — 3-minute, 4×45s segments A-G / H-N / O-U / V-Z)
 ════════════════════════════════════════════════════════ */
 
 function startBaseline() {
-  session.facts         = buildBaselineFacts(); // level-weighted, 240 cards
-  session.index         = 0;
-  session.correctDigits = 0;
+  // Build one shuffle-and-deplete deck per segment
+  baselineState.segIndex       = 0;
+  baselineState.segDcpmResults = [];
+  baselineState.segStartDigits = 0;
+  baselineState.segStartTime   = 0;
+  baselineState.decks          = BASELINE_SEGMENTS.map(s => buildSegmentDeck(s.levels));
+  baselineState.deckIdx        = 0;
 
+  session.correctDigits = 0;
+  session._baselineDone = false;
+
+  showCountdown(() => launchBaselineTimer());
+}
+
+function launchBaselineTimer() {
   const timerEl    = document.getElementById('baseline-timer');
   const progressEl = document.getElementById('baseline-progress');
-  const scoreEl    = document.getElementById('baseline-score');
+  const labelEl    = document.getElementById('baseline-section-label');
   const problemEl  = document.getElementById('baseline-problem');
   const inputEl    = document.getElementById('baseline-input');
 
-  timerEl.textContent = '2:00';
+  timerEl.textContent = '3:00';
   timerEl.classList.remove('urgent');
-  scoreEl.textContent = '0 digits';
+  labelEl.textContent = 'Section 1 / 4';
   showScreen('screen-baseline');
-  renderProblem(problemEl, session.facts[0].display);
+
+  // Load first card from segment 0 deck
+  const firstCard = currentBaselineCard();
+  renderProblem(problemEl, firstCard.display);
   focusInput(inputEl);
 
-  session.timer = createCountdownTimer(120, timerEl, progressEl, null, (elapsed) => {
-    finishBaseline(elapsed);
-  });
+  session.timer = createCountdownTimer(
+    BASELINE_TOTAL_SEC,
+    timerEl,
+    progressEl,
+    (elapsed, remaining) => onBaselineTick(elapsed, remaining, labelEl),
+    (elapsed) => finishBaseline(elapsed)
+  );
   session.timer.start();
 
   attachInputHandler(inputEl, handleBaselineInput);
 }
 
-function handleBaselineInput(inputEl) {
-  const card = session.facts[session.index];
-  const typed = inputEl.value.trim();
-  if (typed === '') return;
-
-  const correctLen = String(card.answer).length;
-  if (typed.length < correctLen) return; // wait for full answer
-
-  scoreAndAdvanceSession(
-    inputEl,
-    document.getElementById('baseline-problem'),
-    document.getElementById('baseline-score'),
-    card,
-    parseInt(typed, 10),
-    () => { session.timer.stop(); finishBaseline(session.timer.getElapsed()); }
+function onBaselineTick(elapsed, remaining, labelEl) {
+  // Detect segment boundary crossings at 45, 90, 135 seconds
+  const newSegIdx = Math.min(
+    Math.floor(elapsed / BASELINE_SEGMENT_SEC),
+    BASELINE_SEGMENTS.length - 1
   );
-}
 
-function finishBaseline(elapsed) {
-  removeInputHandler(document.getElementById('baseline-input'));
-  // Guard against double-fire (timer expiry + exhausted facts)
-  if (session._baselineDone) return;
-  session._baselineDone = true;
+  if (newSegIdx !== baselineState.segIndex) {
+    // Record DCPM for the completed segment
+    const segElapsed = elapsed - baselineState.segStartTime;
+    const segDigits  = session.correctDigits - baselineState.segStartDigits;
+    const segDcpm    = calculateDCPM(segDigits, segElapsed);
+    baselineState.segDcpmResults.push(segDcpm);
 
-  const dcpm = calculateDCPM(session.correctDigits, elapsed);
-  recordDCPM(studentData, 'baseline', dcpm);
+    // Advance to next segment
+    baselineState.segIndex       = newSegIdx;
+    baselineState.segStartDigits = session.correctDigits;
+    baselineState.segStartTime   = elapsed;
+    baselineState.deckIdx        = 0;
 
-  if (dcpm >= 40) {
-    showHighFluency(dcpm, () => {
-      session._baselineDone = false;
-      startBaseline();
-    });
-  } else {
-    // Initialise diagnostic binary search over the full range [A, Z]
-    diagState.searchLow   = 'A';
-    diagState.searchHigh  = 'Z';
-    diagState.round       = 0;
-    diagState.lastTestEnd = null;
-    session._baselineDone = false;
-    showNextDiagIntro();
+    labelEl.textContent = `Section ${newSegIdx + 1} / 4`;
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   DIAGNOSTIC MODE  (#1 — binary search, 1-min subtests)
-
-   State machine:
-     diagState.searchLow / searchHigh  = remaining search space
-     Each subtest covers [searchLow, mid(searchLow, searchHigh)]
-     Pass  → shrink search to [mid+1, searchHigh]
-     Fail  → shrink search to [searchLow, mid]
-     searchLow === searchHigh → done, place student
-════════════════════════════════════════════════════════ */
-
-function computeDiagTestRange() {
-  const lowIdx  = LEVEL_ORDER.indexOf(diagState.searchLow);
-  const highIdx = LEVEL_ORDER.indexOf(diagState.searchHigh);
-  const midIdx  = Math.floor((lowIdx + highIdx) / 2);
-  return {
-    testStart: diagState.searchLow,
-    testEnd:   LEVEL_ORDER[midIdx],
-  };
+function currentBaselineCard() {
+  const deck = baselineState.decks[baselineState.segIndex];
+  if (!deck || deck.length === 0) return { display: '0 × 0', answer: 0 };
+  const idx = baselineState.deckIdx % deck.length;
+  return deck[idx];
 }
 
-function rangeLabelFor(start, end) {
-  return start === end ? `Level ${start}` : `Levels ${start}–${end}`;
+function advanceBaselineCard(problemEl) {
+  baselineState.deckIdx++;
+  const card = currentBaselineCard();
+  renderProblem(problemEl, card.display);
 }
 
-function showNextDiagIntro() {
-  diagState.round++;
-  const { testStart, testEnd } = computeDiagTestRange();
-  const label = rangeLabelFor(testStart, testEnd);
-  showDiagIntro(diagState.round, label, () => launchDiagSubtest(testStart, testEnd));
-}
-
-function launchDiagSubtest(testStart, testEnd) {
-  session.facts         = buildDiagnosticFacts(testStart, testEnd); // level-weighted
-  session.index         = 0;
-  session.correctDigits = 0;
-  diagState.lastTestEnd = testEnd;
-
-  const timerEl    = document.getElementById('diag-timer');
-  const progressEl = document.getElementById('diag-progress');
-  const scoreEl    = document.getElementById('diag-score');
-  const problemEl  = document.getElementById('diag-problem');
-  const inputEl    = document.getElementById('diag-input');
-
-  document.getElementById('diag-label').textContent =
-    `Diagnostic · ${rangeLabelFor(testStart, testEnd)}`;
-  timerEl.textContent = '1:00';
-  timerEl.classList.remove('urgent');
-  scoreEl.textContent = '0 digits';
-  progressEl.style.width = '0%';
-
-  showScreen('screen-diagnostic');
-  renderProblem(problemEl, session.facts[0].display);
-  focusInput(inputEl);
-
-  session.timer = createCountdownTimer(60, timerEl, progressEl, null, (elapsed) => {
-    finishDiagSubtest(elapsed);
-  });
-  session.timer.start();
-  attachInputHandler(inputEl, handleDiagInput);
-}
-
-function handleDiagInput(inputEl) {
-  const card = session.facts[session.index];
+function handleBaselineInput(inputEl) {
+  const card  = currentBaselineCard();
   const typed = inputEl.value.trim();
   if (typed === '') return;
 
   if (typed.length < String(card.answer).length) return;
 
-  scoreAndAdvanceSession(
-    inputEl,
-    document.getElementById('diag-problem'),
-    document.getElementById('diag-score'),
-    card,
-    parseInt(typed, 10),
-    () => { session.timer.stop(); finishDiagSubtest(session.timer.getElapsed()); }
-  );
+  const typedNum  = parseInt(typed, 10);
+  const isCorrect = typedNum === card.answer;
+  const digits    = countCorrectDigits(card.answer, typedNum);
+
+  session.correctDigits += digits;
+  flashInput(inputEl, isCorrect);
+  showAnswerEcho(inputEl, typed, isCorrect);
+
+  const problemEl = document.getElementById('baseline-problem');
+  advanceBaselineCard(problemEl);
+  focusInput(inputEl);
 }
 
-function finishDiagSubtest(elapsed) {
-  removeInputHandler(document.getElementById('diag-input'));
+function finishBaseline(elapsed) {
+  removeInputHandler(document.getElementById('baseline-input'));
+  if (session._baselineDone) return;
+  session._baselineDone = true;
 
-  const dcpm   = calculateDCPM(session.correctDigits, elapsed);
-  const passed = dcpm >= 40;
+  // Record final segment DCPM
+  const finalSegElapsed = elapsed - baselineState.segStartTime;
+  const finalSegDigits  = session.correctDigits - baselineState.segStartDigits;
+  baselineState.segDcpmResults.push(calculateDCPM(finalSegDigits, finalSegElapsed));
 
-  studentData.diagnosticHistory.push({
-    date:       new Date().toISOString(),
-    rangeStart: diagState.searchLow,
-    rangeEnd:   diagState.lastTestEnd,
-    dcpm:       Math.round(dcpm * 10) / 10,
-  });
-  recordDCPM(studentData, 'diagnostic', dcpm);
+  // Fill any missing segments (if test ended before crossing all boundaries)
+  while (baselineState.segDcpmResults.length < BASELINE_SEGMENTS.length) {
+    baselineState.segDcpmResults.push(0);
+  }
 
-  // Update binary search bounds
-  const lowIdx     = LEVEL_ORDER.indexOf(diagState.searchLow);
-  const highIdx    = LEVEL_ORDER.indexOf(diagState.searchHigh);
-  const testEndIdx = LEVEL_ORDER.indexOf(diagState.lastTestEnd);
+  const overallDcpm = calculateDCPM(session.correctDigits, elapsed);
+  recordDCPM(studentData, 'baseline', overallDcpm);
 
-  if (lowIdx === highIdx) {
-    // Tested a single level → done
-    const level = passed ? null : diagState.searchLow;
-    placeDiagnosticResult(level);
+  if (overallDcpm >= 40) {
+    showHighFluency(overallDcpm, () => {
+      session._baselineDone = false;
+      startBaseline();
+    });
     return;
   }
 
-  if (passed) {
-    const newLowIdx = testEndIdx + 1;
-    if (newLowIdx > highIdx) {
-      // Passed the entire search range → no gap found (edge case)
-      placeDiagnosticResult(null);
-      return;
+  // Find first failing segment → place student at that segment's startLevel
+  let placedLevel = 'A';
+  for (let i = 0; i < BASELINE_SEGMENTS.length; i++) {
+    if (baselineState.segDcpmResults[i] < 40) {
+      placedLevel = BASELINE_SEGMENTS[i].startLevel;
+      break;
     }
-    diagState.searchLow  = LEVEL_ORDER[newLowIdx];
-    diagState.searchHigh = diagState.searchHigh; // unchanged
-  } else {
-    // Gap is in [searchLow, testEnd]
-    diagState.searchLow  = diagState.searchLow;  // unchanged
-    diagState.searchHigh = diagState.lastTestEnd;
+    // If all segments pass, shouldn't reach here (covered by overallDcpm >= 40 above)
+    placedLevel = BASELINE_SEGMENTS[BASELINE_SEGMENTS.length - 1].startLevel;
   }
 
-  // More searching needed
-  showNextDiagIntro();
-}
-
-function placeDiagnosticResult(level) {
-  // level === null means passed everything (highly unlikely given baseline fail)
-  const placedAt = level || 'A';
-  studentData.currentLevel     = placedAt;
+  studentData.currentLevel     = placedLevel;
   studentData.currentFactIndex = 0;
   saveStudentData(studentData);
 
   showMessage(
-    `Great effort! We'll start your practice at Level ${placedAt}.`,
-    () => startPracticeLevel(placedAt)
+    `Great effort! We'll start your practice at Level ${placedLevel}.`,
+    () => startPracticeLevel(placedLevel)
   );
 }
 
 /* ═══════════════════════════════════════════════════════
-   PRACTICE — Incremental Rehearsal  (#2 #4 #5)
+   PRACTICE — Incremental Rehearsal  (#1 #2)
 ════════════════════════════════════════════════════════ */
 
 function startPracticeLevel(levelKey) {
@@ -309,7 +256,6 @@ function practiceNextFact() {
   const levelKey = irState.levelKey;
   const level    = LEVEL_MAP[levelKey];
 
-  // Rule-based levels (A & F) are treated as a single learning target
   irState.isRuleBased = level.commutative;
 
   if (irState.isRuleBased) {
@@ -324,38 +270,38 @@ function startRegularIR(levelKey) {
   const facts = LEVEL_MAP[levelKey].facts;
 
   if (irState.factIndex >= facts.length) {
-    // All facts done → end-of-level test
     runLevelTest(levelKey);
     return;
   }
 
   const unknown = facts[irState.factIndex];
 
-  // Build session bank (hierarchical, fixed for this U1 cycle)
   const masteredFacts = studentData.masteredFacts.map(k => parseFactKey(k));
   const priorInLevel  = facts.slice(0, irState.factIndex);
   const knownPool     = [...masteredFacts, ...priorInLevel];
   irState.sessionBank = buildSessionBank(unknown, knownPool, levelKey);
 
-  // Generate sequence (randomised K slots from fixed bank)
   irState.sequence = generateIRSequence(unknown, irState.sessionBank);
   irState.seqIndex = 0;
 
-  showPracticeScreen(levelKey, irState.factIndex + 1, facts.length);
-  displayIRCard();
+  showCountdown(() => {
+    showPracticeScreen(levelKey, irState.factIndex + 1, facts.length);
+    displayIRCard();
+  });
 }
 
 /* ── Rule-based IR (Level A, F: whole family as one cycle) ── */
 function startRuleBasedIR(levelKey) {
   const masteredFacts = studentData.masteredFacts.map(k => parseFactKey(k));
-  // Use first fact of level as reference for bank tier-selection
   const refFact = LEVEL_MAP[levelKey].facts[0];
   irState.sessionBank  = buildSessionBank(refFact, masteredFacts, levelKey);
   irState.sequence     = generateRuleBasedIRSequence(levelKey, irState.sessionBank);
   irState.seqIndex     = 0;
 
-  showPracticeScreen(levelKey, null, null);
-  displayIRCard();
+  showCountdown(() => {
+    showPracticeScreen(levelKey, null, null);
+    displayIRCard();
+  });
 }
 
 function showPracticeScreen(levelKey, factNum, totalFacts) {
@@ -399,9 +345,9 @@ function handlePracticeInput(inputEl) {
   const typedNum  = parseInt(typed, 10);
   const isCorrect = typedNum === card.answer;
   flashInput(inputEl, isCorrect);
+  showAnswerEcho(inputEl, typed, isCorrect);
 
   if (!isCorrect) {
-    // #3 — DI error correction: show panel, require correct retype, restart sequence
     irState.inErrorCorrection   = true;
     irState.errorExpectedAnswer = card.answer;
     irState.errorFactA          = card.fact ? card.fact[0] : null;
@@ -410,17 +356,14 @@ function handlePracticeInput(inputEl) {
     if (card.fact) {
       showErrorPanel(card.fact[0], card.fact[1], card.answer);
     } else {
-      // addition/subtraction filler card — show generic error panel
       showErrorPanel('?', '?', card.answer);
     }
     attachErrorCorrectionHandler();
     return;
   }
 
-  // Correct — advance
   irState.seqIndex++;
   if (irState.seqIndex >= irState.sequence.length) {
-    // Full IR cycle complete → mastery check
     irSequenceComplete();
     return;
   }
@@ -429,19 +372,18 @@ function handlePracticeInput(inputEl) {
 
 function irSequenceComplete() {
   if (irState.isRuleBased) {
-    // Rule-based: whole level is the "unknown"
     masteryState.unknown     = null;
     masteryState.isRuleBased = true;
     masteryState.levelKey    = irState.levelKey;
     masteryState.attempts    = 0;
-    runMasteryCheck(true /* freshEntry */);
+    runMasteryCheck(true);
   } else {
     const unknown = LEVEL_MAP[irState.levelKey].facts[irState.factIndex];
     masteryState.unknown     = unknown;
     masteryState.isRuleBased = false;
     masteryState.levelKey    = irState.levelKey;
     masteryState.attempts    = 0;
-    runMasteryCheck(true /* freshEntry */);
+    runMasteryCheck(true);
   }
 }
 
@@ -458,12 +400,10 @@ function attachErrorCorrectionHandler() {
 
     const typedNum = parseInt(typed, 10);
     if (typedNum === irState.errorExpectedAnswer) {
-      // Correct retype → restart IR cycle with same Session Bank (#4 reset logic)
       irState.inErrorCorrection = false;
       hideErrorPanel();
       removeInputHandler(errorInput);
 
-      // Regenerate sequence from same bank (new random K-slot draws)
       if (irState.isRuleBased) {
         irState.sequence = generateRuleBasedIRSequence(irState.levelKey, irState.sessionBank);
       } else {
@@ -473,7 +413,6 @@ function attachErrorCorrectionHandler() {
       irState.seqIndex = 0;
       displayIRCard();
     } else {
-      // Still wrong → clear and let them try again (auto-advance will re-fire)
       el.value = '';
       el.focus({ preventScroll: true });
     }
@@ -481,10 +420,10 @@ function attachErrorCorrectionHandler() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   MASTERY CHECK  (#6 — accuracy guardrail + retry system)
+   MASTERY CHECK  (#4 — 80/20 maintenance + accuracy guardrail)
 
    freshEntry = true  → reset masteryState.attempts to 0
-   freshEntry = false → keep existing attempts counter (restart after wrong answer)
+   freshEntry = false → keep existing attempts counter
 ════════════════════════════════════════════════════════ */
 
 function runMasteryCheck(freshEntry) {
@@ -510,24 +449,25 @@ function runMasteryCheck(freshEntry) {
 
   const timerEl    = document.getElementById('mastery-timer');
   const progressEl = document.getElementById('mastery-progress');
-  const scoreEl    = document.getElementById('mastery-score');
   const problemEl  = document.getElementById('mastery-problem');
   const inputEl    = document.getElementById('mastery-input');
 
   timerEl.textContent = '1:00';
   timerEl.classList.remove('urgent');
-  scoreEl.textContent = '0 digits';
   progressEl.style.width = '0%';
-  showScreen('screen-mastery-check');
-  renderProblem(problemEl, checkFacts[0].display);
-  focusInput(inputEl);
 
-  session.timer = createCountdownTimer(60, timerEl, progressEl, null, (elapsed) => {
-    finishMasteryCheck(elapsed);
+  showCountdown(() => {
+    showScreen('screen-mastery-check');
+    renderProblem(problemEl, checkFacts[0].display);
+    focusInput(inputEl);
+
+    session.timer = createCountdownTimer(60, timerEl, progressEl, null, (elapsed) => {
+      finishMasteryCheck(elapsed);
+    });
+    session.timer.start();
+
+    attachInputHandler(inputEl, handleMasteryInput);
   });
-  session.timer.start();
-
-  attachInputHandler(inputEl, handleMasteryInput);
 }
 
 function handleMasteryInput(inputEl) {
@@ -542,17 +482,17 @@ function handleMasteryInput(inputEl) {
   const isCorrect = typedNum === card.answer;
 
   if (!isCorrect) {
-    // #6 — wrong answer: stop test immediately
     session.timer.stop();
     removeInputHandler(inputEl);
     flashInput(inputEl, false);
+    showAnswerEcho(inputEl, typed, false);
     handleMasteryWrongAnswer();
     return;
   }
 
-  // Correct
   session.correctDigits += countCorrectDigits(card.answer, typedNum);
   flashInput(inputEl, true);
+  showAnswerEcho(inputEl, typed, true);
   session.index++;
 
   if (session.index >= session.facts.length) {
@@ -569,35 +509,30 @@ function handleMasteryWrongAnswer() {
   masteryState.attempts++;
 
   if (masteryState.attempts >= 4) {
-    // 4th wrong answer → redirect to IR
     showMessage(
       "Let's practice a little more to get faster. You've got this!",
       () => {
         irState.seqIndex = 0;
-        practiceNextFact(); // re-starts IR for the same fact/level
+        practiceNextFact();
       }
     );
   } else {
     const left = 4 - masteryState.attempts;
     showMessage(
       `Oops! You got one wrong. No big deal. Try again. You have ${left} chance${left === 1 ? '' : 's'} left.`,
-      () => runMasteryCheck(false) // keep same attempts count
+      () => runMasteryCheck(false)
     );
   }
 }
 
 function finishMasteryCheck(elapsed) {
   removeInputHandler(document.getElementById('mastery-input'));
-  // 100% accuracy reached (zero wrong answers stopped the test)
   const dcpm = calculateDCPM(session.correctDigits, elapsed);
   recordDCPM(studentData, 'mastery-check', dcpm);
 
   if (dcpm >= 40) {
-    // Full pass → mark fact/level mastered
     masteryCheckPass(dcpm);
   } else {
-    // Accurate but too slow → encourage speed, restart mastery check
-    // (does NOT increment masteryState.attempts)
     showMessage(
       "You're doing great on accuracy! Let's try one more time to get your speed up.",
       () => runMasteryCheck(false)
@@ -606,8 +541,9 @@ function finishMasteryCheck(elapsed) {
 }
 
 function masteryCheckPass(dcpm) {
+  const praise = getRandomPraise();
+
   if (masteryState.isRuleBased) {
-    // Mark ALL facts in the level as mastered
     const levelKey = masteryState.levelKey;
     for (const fact of LEVEL_MAP[levelKey].facts) {
       const key = factKey(fact);
@@ -618,28 +554,27 @@ function masteryCheckPass(dcpm) {
     if (!studentData.masteredLevels.includes(levelKey)) {
       studentData.masteredLevels.push(levelKey);
     }
-    saveStudentData(studentData);
 
-    // Advance to next level
     const nextIdx   = LEVEL_ORDER.indexOf(levelKey) + 1;
     const nextLevel = nextIdx < LEVEL_ORDER.length ? LEVEL_ORDER[nextIdx] : null;
     studentData.currentLevel     = nextLevel || levelKey;
     studentData.currentFactIndex = 0;
     saveStudentData(studentData);
 
-    // TODO: Gamification hook — fire mastery event
-    showMessage(
-      `Excellent! You've mastered the ${levelKey === 'A' ? 'ones' : 'zeros'} rule!`,
-      () => {
-        if (nextLevel) {
-          startPracticeLevel(nextLevel);
-        } else {
-          showScreen('screen-welcome');
-        }
-      }
-    );
+    if (nextLevel) {
+      const nextFact = LEVEL_MAP[nextLevel].facts[0] || null;
+      showNewLevel(nextLevel, nextFact, praise, () => {
+        showCountdown(() => startPracticeLevel(nextLevel));
+      });
+    } else {
+      showLevelComplete(
+        'All Levels Complete!',
+        'You have mastered all multiplication facts. Show this to your teacher!',
+        dcpm,
+        () => showScreen('screen-welcome')
+      );
+    }
   } else {
-    // Mark single fact mastered
     const unknown = masteryState.unknown;
     const key     = factKey(unknown);
     if (!studentData.masteredFacts.includes(key)) {
@@ -647,20 +582,23 @@ function masteryCheckPass(dcpm) {
     }
     saveStudentData(studentData);
 
-    showMessage(
-      `You've worked hard to memorize ${unknown[0]} × ${unknown[1]}. Congratulations!`,
-      () => {
-        irState.factIndex++;
-        studentData.currentFactIndex = irState.factIndex;
-        saveStudentData(studentData);
-        practiceNextFact();
-      }
-    );
+    irState.factIndex++;
+    studentData.currentFactIndex = irState.factIndex;
+    saveStudentData(studentData);
+
+    const levelKey   = masteryState.levelKey;
+    const facts      = LEVEL_MAP[levelKey].facts;
+    const totalFacts = facts.length;
+    const nextFact   = irState.factIndex < totalFacts ? facts[irState.factIndex] : null;
+
+    showFactProgress(levelKey, irState.factIndex, totalFacts, nextFact, praise, () => {
+      showCountdown(() => practiceNextFact());
+    });
   }
 }
 
 /* ═══════════════════════════════════════════════════════
-   LEVEL TEST  (#6 — accuracy guardrail applies here too)
+   LEVEL TEST  (#6 — accuracy guardrail)
 ════════════════════════════════════════════════════════ */
 
 function runLevelTest(levelKey) {
@@ -678,24 +616,25 @@ function launchLevelTest(levelKey) {
 
   const timerEl    = document.getElementById('level-test-timer');
   const progressEl = document.getElementById('level-test-progress');
-  const scoreEl    = document.getElementById('level-test-score');
   const problemEl  = document.getElementById('level-test-problem');
   const inputEl    = document.getElementById('level-test-input');
 
   document.getElementById('level-test-label').textContent = `Level ${levelKey} Test`;
   timerEl.textContent = '1:00';
   timerEl.classList.remove('urgent');
-  scoreEl.textContent = '0 digits';
   progressEl.style.width = '0%';
-  showScreen('screen-level-test');
-  renderProblem(problemEl, testFacts[0].display);
-  focusInput(inputEl);
 
-  session.timer = createCountdownTimer(60, timerEl, progressEl, null, (elapsed) => {
-    finishLevelTest(elapsed);
+  showCountdown(() => {
+    showScreen('screen-level-test');
+    renderProblem(problemEl, testFacts[0].display);
+    focusInput(inputEl);
+
+    session.timer = createCountdownTimer(60, timerEl, progressEl, null, (elapsed) => {
+      finishLevelTest(elapsed);
+    });
+    session.timer.start();
+    attachInputHandler(inputEl, handleLevelTestInput);
   });
-  session.timer.start();
-  attachInputHandler(inputEl, handleLevelTestInput);
 }
 
 function handleLevelTestInput(inputEl) {
@@ -709,16 +648,17 @@ function handleLevelTestInput(inputEl) {
   const isCorrect = typedNum === card.answer;
 
   if (!isCorrect) {
-    // #6 — stop on wrong answer
     session.timer.stop();
     removeInputHandler(inputEl);
     flashInput(inputEl, false);
+    showAnswerEcho(inputEl, typed, false);
     handleLevelTestWrongAnswer();
     return;
   }
 
   session.correctDigits += countCorrectDigits(card.answer, typedNum);
   flashInput(inputEl, true);
+  showAnswerEcho(inputEl, typed, true);
   session.index++;
 
   if (session.index >= session.facts.length) {
@@ -748,7 +688,7 @@ function handleLevelTestWrongAnswer() {
     const left = 4 - levelTestState.attempts;
     showMessage(
       `Oops! You got one wrong. No big deal. Try again. You have ${left} chance${left === 1 ? '' : 's'} left.`,
-      () => launchLevelTest(levelTestState.levelKey) // restart test, keep attempts
+      () => launchLevelTest(levelTestState.levelKey)
     );
   }
 }
@@ -762,7 +702,6 @@ function finishLevelTest(elapsed) {
   if (passed) {
     advanceToNextLevel(levelTestState.levelKey, dcpm);
   } else {
-    // 100% accuracy but too slow
     showMessage(
       "You're doing great on accuracy! Let's try one more time to get your speed up.",
       () => launchLevelTest(levelTestState.levelKey)
@@ -782,16 +721,15 @@ function advanceToNextLevel(completedLevel, dcpm) {
   studentData.currentFactIndex = 0;
   saveStudentData(studentData);
 
-  // TODO: Gamification hook — fire 'levelMastered' CustomEvent
+  // TODO: Gamification hook
   // document.dispatchEvent(new CustomEvent('levelMastered', { detail: { completedLevel, dcpm } }));
 
   if (nextLevel) {
-    showLevelComplete(
-      `Level ${completedLevel} Complete!`,
-      `Great work! Moving on to Level ${nextLevel}.`,
-      dcpm,
-      () => startPracticeLevel(nextLevel)
-    );
+    const praise   = getRandomPraise();
+    const nextFact = LEVEL_MAP[nextLevel].facts[0] || null;
+    showNewLevel(nextLevel, nextFact, praise, () => {
+      showCountdown(() => startPracticeLevel(nextLevel));
+    });
   } else {
     showLevelComplete(
       'All Levels Complete!',
@@ -803,30 +741,7 @@ function advanceToNextLevel(completedLevel, dcpm) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SHARED SESSION HELPER
-   Scores a card, updates display, advances index.
-════════════════════════════════════════════════════════ */
-
-function scoreAndAdvanceSession(inputEl, problemEl, scoreEl, card, typedNum, onExhausted) {
-  const digits = countCorrectDigits(card.answer, typedNum);
-  session.correctDigits += digits;
-  updateScoreDisplay(scoreEl, session.correctDigits);
-  flashInput(inputEl, typedNum === card.answer);
-
-  session.index++;
-  if (session.index >= session.facts.length) {
-    onExhausted();
-    return;
-  }
-  renderProblem(problemEl, session.facts[session.index].display);
-  focusInput(inputEl);
-}
-
-/* ═══════════════════════════════════════════════════════
    INPUT HANDLER MANAGEMENT
-
-   Each input element gets exactly one 'input' listener and one 'keydown'
-   listener stored on the element itself to allow safe replacement.
 ════════════════════════════════════════════════════════ */
 
 function attachInputHandler(inputEl, handler) {
@@ -857,9 +772,6 @@ function removeInputHandler(inputEl) {
 
 /* ─────────────────────────────────────────────
    FORCE EVALUATE  (Enter key handler)
-   Evaluates whatever is typed regardless of digit length.
-   A short/wrong answer scores 0 correct digits and is treated as incorrect
-   for accuracy-guardrail screens.
 ───────────────────────────────────────────── */
 function forceEvaluate(inputEl, typed) {
   const activeScreen = document.querySelector('.screen.active');
@@ -868,33 +780,20 @@ function forceEvaluate(inputEl, typed) {
   const typedNum = parseInt(typed, 10);
 
   if (screenId === 'screen-baseline') {
-    if (session.index >= session.facts.length) return;
-    scoreAndAdvanceSession(
-      inputEl,
-      document.getElementById('baseline-problem'),
-      document.getElementById('baseline-score'),
-      session.facts[session.index],
-      typedNum,
-      () => { session.timer.stop(); finishBaseline(session.timer.getElapsed()); }
-    );
-
-  } else if (screenId === 'screen-diagnostic') {
-    if (session.index >= session.facts.length) return;
-    scoreAndAdvanceSession(
-      inputEl,
-      document.getElementById('diag-problem'),
-      document.getElementById('diag-score'),
-      session.facts[session.index],
-      typedNum,
-      () => { session.timer.stop(); finishDiagSubtest(session.timer.getElapsed()); }
-    );
+    const card      = currentBaselineCard();
+    const isCorrect = typedNum === card.answer;
+    const digits    = countCorrectDigits(card.answer, typedNum);
+    session.correctDigits += digits;
+    flashInput(inputEl, isCorrect);
+    showAnswerEcho(inputEl, typed, isCorrect);
+    advanceBaselineCard(document.getElementById('baseline-problem'));
+    focusInput(inputEl);
 
   } else if (screenId === 'screen-practice') {
     if (irState.inErrorCorrection) {
-      // Delegate to error-correction handler via fake input event
       const errorInput = document.getElementById('error-input');
       if (document.activeElement === errorInput && errorInput.value.trim() !== '') {
-        attachErrorCorrectionHandler(); // re-triggers via current value
+        attachErrorCorrectionHandler();
       }
       return;
     }
@@ -902,6 +801,7 @@ function forceEvaluate(inputEl, typed) {
     const card      = irState.sequence[irState.seqIndex];
     const isCorrect = typedNum === card.answer;
     flashInput(inputEl, isCorrect);
+    showAnswerEcho(inputEl, typed, isCorrect);
 
     if (!isCorrect) {
       irState.inErrorCorrection   = true;
@@ -929,10 +829,12 @@ function forceEvaluate(inputEl, typed) {
       session.timer.stop();
       removeInputHandler(inputEl);
       flashInput(inputEl, false);
+      showAnswerEcho(inputEl, typed, false);
       handleMasteryWrongAnswer();
     } else {
       session.correctDigits += countCorrectDigits(card.answer, typedNum);
       flashInput(inputEl, true);
+      showAnswerEcho(inputEl, typed, true);
       session.index++;
       if (session.index >= session.facts.length) {
         session.timer.stop();
@@ -951,10 +853,12 @@ function forceEvaluate(inputEl, typed) {
       session.timer.stop();
       removeInputHandler(inputEl);
       flashInput(inputEl, false);
+      showAnswerEcho(inputEl, typed, false);
       handleLevelTestWrongAnswer();
     } else {
       session.correctDigits += countCorrectDigits(card.answer, typedNum);
       flashInput(inputEl, true);
+      showAnswerEcho(inputEl, typed, true);
       session.index++;
       if (session.index >= session.facts.length) {
         session.timer.stop();

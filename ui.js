@@ -19,9 +19,14 @@ function showScreen(id) {
 /* ─────────────────────────────────────────────
    PROBLEM DISPLAY
    Renders: "a × b = ?" with the "?" in accent color.
+   Applies 100ms fade-in animation on each new fact.
 ───────────────────────────────────────────── */
 function renderProblem(containerEl, displayStr) {
+  containerEl.classList.remove('fact-fade');
+  // Force reflow to restart the animation
+  void containerEl.offsetWidth;
   containerEl.innerHTML = `${escapeHtml(displayStr)} = <span class="answer-part">?</span>`;
+  containerEl.classList.add('fact-fade');
 }
 
 function escapeHtml(str) {
@@ -78,6 +83,46 @@ function createCountdownTimer(totalSeconds, timerEl, progressEl, onTick, onExpir
 }
 
 /* ─────────────────────────────────────────────
+   SNAP-ZOOM COUNTDOWN OVERLAY  (#7)
+   Shows 3 → 2 → 1 → GO! before timed tests.
+   Colors: 3=deep blue, 2=cyan, 1=gold, GO!=neon green
+   Calls onComplete when GO! finishes fading.
+───────────────────────────────────────────── */
+function showCountdown(onComplete) {
+  const overlay   = document.getElementById('countdown-overlay');
+  const numberEl  = document.getElementById('countdown-number');
+  const steps = [
+    { text: '3',   color: '#1F51FF', shadow: '#1F51FF', anim: 'countdownSlam 0.7s ease-out forwards' },
+    { text: '2',   color: '#00FFFF', shadow: '#00FFFF', anim: 'countdownSlam 0.7s ease-out forwards' },
+    { text: '1',   color: '#FFD700', shadow: '#FFD700', anim: 'countdownSlam 0.7s ease-out forwards' },
+    { text: 'GO!', color: '#39FF14', shadow: '#39FF14', anim: 'goSlam 0.7s ease-out forwards' },
+  ];
+
+  overlay.classList.remove('hidden');
+  let stepIdx = 0;
+
+  function runStep() {
+    if (stepIdx >= steps.length) {
+      overlay.classList.add('hidden');
+      onComplete();
+      return;
+    }
+    const step = steps[stepIdx++];
+    numberEl.textContent = step.text;
+    numberEl.style.color      = step.color;
+    numberEl.style.textShadow = `0 0 30px ${step.shadow}, 0 0 60px ${step.shadow}`;
+    numberEl.style.animation  = 'none';
+    void numberEl.offsetWidth; // reflow to restart animation
+    numberEl.style.animation  = step.anim;
+
+    const delay = step.text === 'GO!' ? 700 : 700;
+    setTimeout(runStep, delay);
+  }
+
+  runStep();
+}
+
+/* ─────────────────────────────────────────────
    FLASH FEEDBACK
 ───────────────────────────────────────────── */
 function flashInput(inputEl, correct) {
@@ -87,29 +132,26 @@ function flashInput(inputEl, correct) {
 }
 
 /* ─────────────────────────────────────────────
-   SCORE DISPLAY
+   ANSWER ECHO  (#6)
+   Shows a floating ghost of the typed answer rising above the input.
+   isCorrect controls the color (green/red).
 ───────────────────────────────────────────── */
-function updateScoreDisplay(scoreEl, correctDigits) {
-  scoreEl.textContent = `${correctDigits} digits`;
+function showAnswerEcho(inputEl, displayText, isCorrect) {
+  const rect  = inputEl.getBoundingClientRect();
+  const ghost = document.createElement('div');
+  ghost.className = `answer-echo ${isCorrect ? 'correct' : 'wrong'}`;
+  ghost.textContent = displayText;
+  ghost.style.left = `${rect.left + rect.width / 2 - 40}px`;
+  ghost.style.top  = `${rect.top - 12}px`;
+  document.body.appendChild(ghost);
+  setTimeout(() => ghost.remove(), 500);
 }
 
 /* ─────────────────────────────────────────────
-   DIAGNOSTIC INTRO SCREEN  (#1)
-   Shows between baseline-fail and first subtest, and between subtests.
-
-   @param {number}   subtestNum  1-based subtest counter
-   @param {string}   rangeLabel  e.g. "Levels A–M"
-   @param {Function} onStart     Called when student clicks Start
+   SCORE DISPLAY  (kept for compatibility, hidden in timed screens)
 ───────────────────────────────────────────── */
-function showDiagIntro(subtestNum, rangeLabel, onStart) {
-  document.getElementById('diag-intro-subtest').textContent =
-    `Diagnostic Subtest ${subtestNum}  ·  ${rangeLabel}`;
-  showScreen('screen-diag-intro');
-
-  const btn    = document.getElementById('btn-diag-start');
-  const newBtn = btn.cloneNode(true);
-  btn.parentNode.replaceChild(newBtn, btn);
-  newBtn.addEventListener('click', onStart, { once: true });
+function updateScoreDisplay(scoreEl, correctDigits) {
+  if (scoreEl) scoreEl.textContent = `${correctDigits} digits`;
 }
 
 /* ─────────────────────────────────────────────
@@ -139,9 +181,6 @@ function showLevelComplete(title, msg, dcpm, onContinue) {
   const newBtn = btn.cloneNode(true);
   btn.parentNode.replaceChild(newBtn, btn);
   newBtn.addEventListener('click', onContinue, { once: true });
-
-  // TODO: Gamification hook — fire 'levelMastered' CustomEvent here
-  // document.dispatchEvent(new CustomEvent('levelMastered', { detail: { dcpm } }));
 }
 
 /* ─────────────────────────────────────────────
@@ -197,4 +236,91 @@ function showErrorPanel(a, b, product) {
 function hideErrorPanel() {
   document.getElementById('error-panel').classList.add('hidden');
   document.getElementById('practice-input').style.display = '';
+}
+
+/* ─────────────────────────────────────────────
+   FACT PROGRESS SCREEN  (#9)
+   Shows after each fact mastered within a level.
+   Segmented progress bar, next-fact preview, Start Practice button.
+
+   @param {string}   levelKey      Current level key (e.g. 'B')
+   @param {number}   completedIdx  Number of facts completed so far (0-based count)
+   @param {number}   totalFacts    Total facts in this level
+   @param {number[]|null} nextFact Next [a,b] fact, or null if level is done
+   @param {string}   praise        Praise string from getRandomPraise()
+   @param {Function} onStart       Called when student clicks Start Practice
+───────────────────────────────────────────── */
+function showFactProgress(levelKey, completedIdx, totalFacts, nextFact, praise, onStart) {
+  document.getElementById('fact-progress-level-title').textContent =
+    `Level ${levelKey} Progress`;
+
+  // Build segmented bar
+  const barEl = document.getElementById('fact-progress-bar');
+  barEl.innerHTML = '';
+  for (let i = 0; i < totalFacts; i++) {
+    const seg = document.createElement('div');
+    seg.className = 'level-seg';
+    if (i < completedIdx) seg.classList.add('completed');
+    else if (i === completedIdx) seg.classList.add('current');
+    barEl.appendChild(seg);
+  }
+
+  // Next-fact preview
+  const nextEl = document.getElementById('fact-progress-next');
+  if (nextFact) {
+    const product = nextFact[0] * nextFact[1];
+    nextEl.innerHTML =
+      `Next up: ${nextFact[0]} × ${nextFact[1]} = <strong>${product}</strong>`;
+  } else {
+    nextEl.textContent = 'All facts practiced — level test coming up!';
+  }
+
+  // Praise
+  document.getElementById('fact-progress-praise').textContent = praise;
+
+  showScreen('screen-fact-progress');
+
+  const btn    = document.getElementById('btn-fact-progress-start');
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+  newBtn.focus({ preventScroll: true });
+  newBtn.addEventListener('click', onStart, { once: true });
+  newBtn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); onStart(); }
+  }, { once: true });
+}
+
+/* ─────────────────────────────────────────────
+   NEW LEVEL WELCOME SCREEN  (#9)
+   Shows after a level test pass.
+   Praise header, large new-level letter, next-fact preview, Proceed button.
+
+   @param {string}   newLevelKey   The level the student is advancing TO
+   @param {number[]|null} nextFact First [a,b] fact of the new level (or null)
+   @param {string}   praise        Praise string
+   @param {Function} onProceed     Called when student clicks Let's Go!
+───────────────────────────────────────────── */
+function showNewLevel(newLevelKey, nextFact, praise, onProceed) {
+  document.getElementById('new-level-praise').textContent = praise;
+  document.getElementById('new-level-letter').textContent = `Level ${newLevelKey}`;
+
+  const nextEl = document.getElementById('new-level-next');
+  if (nextFact) {
+    const product = nextFact[0] * nextFact[1];
+    nextEl.innerHTML =
+      `First fact: ${nextFact[0]} × ${nextFact[1]} = <strong>${product}</strong>`;
+  } else {
+    nextEl.textContent = '';
+  }
+
+  showScreen('screen-new-level');
+
+  const btn    = document.getElementById('btn-new-level-proceed');
+  const newBtn = btn.cloneNode(true);
+  btn.parentNode.replaceChild(newBtn, btn);
+  newBtn.focus({ preventScroll: true });
+  newBtn.addEventListener('click', onProceed, { once: true });
+  newBtn.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); onProceed(); }
+  }, { once: true });
 }
